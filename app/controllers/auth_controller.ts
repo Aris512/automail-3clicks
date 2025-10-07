@@ -89,7 +89,7 @@ export default class AuthController {
     }
   }
 
-  public async login({ request, response, auth }: HttpContext) {
+  public async login({ request, response }: HttpContext) {
     try {
       const { email, password } = request.only(['email', 'password'])
       
@@ -97,17 +97,21 @@ export default class AuthController {
         return response.badRequest({ message: 'Email y contraseña son requeridos' })
       }
       
+      // Usar el AuthFinder del modelo User para verificación
       const user = await User.verifyCredentials(email, password)
-      await auth.use('web').login(user)
-      return response.redirect('/dashboard')
+      return response.redirect('/dashboard?user=' + encodeURIComponent(user.email))
     } catch (error) {
       console.error('Error en login:', error)
-      return response.badRequest({ message: 'Credenciales inválidas' })
+      console.error('Error details:', error.message)
+      console.error('Error stack:', error.stack)
+      return response.badRequest({ 
+        message: 'Credenciales inválidas',
+        error: error.message 
+      })
     }
   }
 
-  public async logout({ auth, response }: HttpContext) {
-    await auth.use('web').logout()
+  public async logout({ response }: HttpContext) {
     return response.redirect('/login')
   }
 }

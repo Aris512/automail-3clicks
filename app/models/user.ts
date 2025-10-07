@@ -5,7 +5,7 @@ import { BaseModel, column, manyToMany } from '@adonisjs/lucid/orm'
 import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
 import Tenant from '#models/tenant'
 
-const AuthFinder = withAuthFinder(() => hash.use('scrypt'), {
+const AuthFinder = withAuthFinder(() => hash.use(), {
   uids: ['email'],
   passwordColumnName: 'password',
 })

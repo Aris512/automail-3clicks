@@ -19,6 +19,7 @@ router.get('/register', '#controllers/auth_controller.showRegister')
 router.post('/register', '#controllers/auth_controller.register')
 router.get('/login', '#controllers/auth_controller.showLogin')
 router.post('/login', '#controllers/auth_controller.login')
+router.get('/logout', '#controllers/auth_controller.logout')
 router.post('/logout', '#controllers/auth_controller.logout')
 
 // Rutas protegidas (requieren autenticación)
