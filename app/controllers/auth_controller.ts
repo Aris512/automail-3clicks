@@ -24,7 +24,8 @@ export default class AuthController {
       return response.status(404).send('Página no encontrada')
     }
   }
-  public async register({ request, response, auth }: HttpContext) {
+
+  public async register({ request, response}: HttpContext) {
     try {
       const { fullName, email, password, organization } = request.only([
         'fullName', 'email', 'password', 'organization'
@@ -37,6 +38,12 @@ export default class AuthController {
 
       if (password.length < 6) {
         return response.badRequest({ message: 'La contraseña debe tener al menos 6 caracteres' })
+      }
+
+      // Verificar si el email ya existe
+      const existingUser = await User.findBy('email', email)
+      if (existingUser) {
+        return response.badRequest({ message: 'Este email ya está registrado. Usa otro email o inicia sesión.' })
       }
 
       const user = await User.create({
