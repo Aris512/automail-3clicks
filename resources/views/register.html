@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro - AutoMail 3Clicks</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        border: "hsl(var(--border))",
+                        input: "hsl(var(--input))",
+                        ring: "hsl(var(--ring))",
+                        background: "hsl(var(--background))",
+                        foreground: "hsl(var(--foreground))",
+                        primary: {
+                            DEFAULT: "hsl(var(--primary))",
+                            foreground: "hsl(var(--primary-foreground))",
+                        },
+                        secondary: {
+                            DEFAULT: "hsl(var(--secondary))",
+                            foreground: "hsl(var(--secondary-foreground))",
+                        },
+                        destructive: {
+                            DEFAULT: "hsl(var(--destructive))",
+                            foreground: "hsl(var(--destructive-foreground))",
+                        },
+                        muted: {
+                            DEFAULT: "hsl(var(--muted))",
+                            foreground: "hsl(var(--muted-foreground))",
+                        },
+                        accent: {
+                            DEFAULT: "hsl(var(--accent))",
+                            foreground: "hsl(var(--accent-foreground))",
+                        },
+                        popover: {
+                            DEFAULT: "hsl(var(--popover))",
+                            foreground: "hsl(var(--popover-foreground))",
+                        },
+                        card: {
+                            DEFAULT: "hsl(var(--card))",
+                            foreground: "hsl(var(--card-foreground))",
+                        },
+                    },
+                    borderRadius: {
+                        lg: "var(--radius)",
+                        md: "calc(var(--radius) - 2px)",
+                        sm: "calc(var(--radius) - 4px)",
+                    },
+                },
+            },
+        }
+    </script>
+    <style>
+        :root {
+            --background: 0 0% 100%;
+            --foreground: 222.2 84% 4.9%;
+            --card: 0 0% 100%;
+            --card-foreground: 222.2 84% 4.9%;
+            --popover: 0 0% 100%;
+            --popover-foreground: 222.2 84% 4.9%;
+            --primary: 221.2 83.2% 53.3%;
+            --primary-foreground: 210 40% 98%;
+            --secondary: 210 40% 96%;
+            --secondary-foreground: 222.2 84% 4.9%;
+            --muted: 210 40% 96%;
+            --muted-foreground: 215.4 16.3% 46.9%;
+            --accent: 210 40% 96%;
+            --accent-foreground: 222.2 84% 4.9%;
+            --destructive: 0 84.2% 60.2%;
+            --destructive-foreground: 210 40% 98%;
+            --border: 214.3 31.8% 91.4%;
+            --input: 214.3 31.8% 91.4%;
+            --ring: 221.2 83.2% 53.3%;
+            --radius: 0.5rem;
+        }
+    </style>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-blue-500 via-purple-600 to-blue-700 flex items-center justify-center p-4">
+    <div class="w-full max-w-md">
+        <div class="bg-card rounded-lg shadow-xl p-8">
+            <div class="text-center mb-8">
+                <div class="text-4xl mb-2">🚀</div>
+                <h1 class="text-2xl font-bold text-card-foreground mb-2">AutoMail</h1>
+                <p class="text-muted-foreground">3 Clicks para enviar emails</p>
+            </div>
+            
+            <form id="registerForm" method="POST" action="/register" class="space-y-6">
+                <div class="space-y-2">
+                    <label for="fullName" class="text-sm font-medium text-card-foreground">Nombre Completo</label>
+                    <input 
+                        type="text" 
+                        id="fullName" 
+                        name="fullName" 
+                        required 
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder="Juan Pérez"
+                    >
+                </div>
+                
+                <div class="space-y-2">
+                    <label for="email" class="text-sm font-medium text-card-foreground">Email</label>
+                    <input 
+                        type="email" 
+                        id="email" 
+                        name="email" 
+                        required 
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder="tu@email.com"
+                    >
+                </div>
+                
+                <div class="space-y-2">
+                    <label for="password" class="text-sm font-medium text-card-foreground">Contraseña</label>
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required 
+                        minlength="6"
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder="••••••••"
+                    >
+                    <div id="passwordStrength" class="text-xs"></div>
+                </div>
+                
+                <div class="space-y-2">
+                    <label for="organization" class="text-sm font-medium text-card-foreground">Nombre de la Organización</label>
+                    <input 
+                        type="text" 
+                        id="organization" 
+                        name="organization" 
+                        required 
+                        class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                        placeholder="Mi Empresa S.A."
+                    >
+                </div>
+                
+                <button 
+                    type="submit" 
+                    class="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground hover:bg-primary/90 h-10 px-4 py-2 w-full"
+                >
+                    Crear Cuenta
+                </button>
+            </form>
+            
+            <div class="text-center mt-6">
+                <p class="text-sm text-muted-foreground">
+                    ¿Ya tienes cuenta? 
+                    <a href="/login" class="text-primary hover:underline font-medium">Inicia sesión aquí</a>
+                </p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Validación de contraseña
+        document.getElementById('password').addEventListener('input', function() {
+            const password = this.value;
+            const strengthDiv = document.getElementById('passwordStrength');
+            
+            if (password.length === 0) {
+                strengthDiv.textContent = '';
+                return;
+            }
+            
+            let strength = 0;
+            if (password.length >= 6) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            
+            if (strength < 2) {
+                strengthDiv.textContent = 'Contraseña débil';
+                strengthDiv.className = 'text-red-500';
+            } else if (strength < 3) {
+                strengthDiv.textContent = 'Contraseña media';
+                strengthDiv.className = 'text-yellow-500';
+            } else {
+                strengthDiv.textContent = 'Contraseña fuerte';
+                strengthDiv.className = 'text-green-500';
+            }
+        });
+        
+        // Manejo de errores y mensajes
+        const urlParams = new URLSearchParams(window.location.search);
+        const error = urlParams.get('error');
+        const success = urlParams.get('success');
+        
+        if (error) {
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'bg-destructive/15 text-destructive border border-destructive/20 rounded-md p-3 mb-4 text-sm';
+            errorDiv.textContent = decodeURIComponent(error);
+            document.querySelector('form').insertBefore(errorDiv, document.querySelector('form').firstChild);
+        }
+        
+        if (success) {
+            const successDiv = document.createElement('div');
+            successDiv.className = 'bg-green-500/15 text-green-700 border border-green-500/20 rounded-md p-3 mb-4 text-sm';
+            successDiv.textContent = decodeURIComponent(success);
+            document.querySelector('form').insertBefore(successDiv, document.querySelector('form').firstChild);
+        }
+        
+        // Manejo del formulario
+        document.getElementById('registerForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            const data = Object.fromEntries(formData);
+            
+            // Validación básica
+            if (data.password.length < 6) {
+                alert('La contraseña debe tener al menos 6 caracteres');
+                return;
+            }
+            
+            fetch('/register', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => {
+                if (response.ok) {
+                    window.location.href = '/dashboard';
+                } else {
+                    return response.json().then(err => {
+                        throw new Error(err.message || 'Error al crear la cuenta');
+                    });
+                }
+            })
+            .catch(error => {
+                alert(error.message);
+            });
+        });
+    </script>
+</body>
+</html>

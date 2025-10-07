@@ -3,8 +3,27 @@ import User from '#models/user'
 import Tenant from '#models/tenant'
 import Database from '@adonisjs/lucid/services/db'
 import hash from '@adonisjs/core/services/hash'
+import { readFileSync } from 'fs'
+import { join } from 'path'
 
 export default class AuthController {
+  public async showLogin({ response }: HttpContext) {
+    try {
+      const html = readFileSync(join(process.cwd(), 'resources/views/login.html'), 'utf-8')
+      return response.type('text/html').send(html)
+    } catch (error) {
+      return response.status(404).send('Página no encontrada')
+    }
+  }
+
+  public async showRegister({ response }: HttpContext) {
+    try {
+      const html = readFileSync(join(process.cwd(), 'resources/views/register.html'), 'utf-8')
+      return response.type('text/html').send(html)
+    } catch (error) {
+      return response.status(404).send('Página no encontrada')
+    }
+  }
   public async register({ request, response, auth }: HttpContext) {
     const { fullName, email, password, organization } = request.only([
       'fullName', 'email', 'password', 'organization'
