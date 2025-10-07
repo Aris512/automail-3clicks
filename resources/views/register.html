@@ -208,27 +208,24 @@
             e.preventDefault();
             
             const formData = new FormData(this);
-            const data = Object.fromEntries(formData);
             
             // Validación básica
-            if (data.password.length < 6) {
+            const password = formData.get('password');
+            if (password && password.length < 6) {
                 alert('La contraseña debe tener al menos 6 caracteres');
                 return;
             }
             
             fetch('/register', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
+                body: formData
             })
             .then(response => {
                 if (response.ok) {
                     window.location.href = '/dashboard';
                 } else {
-                    return response.json().then(err => {
-                        throw new Error(err.message || 'Error al crear la cuenta');
+                    return response.text().then(text => {
+                        throw new Error('Error al crear la cuenta: ' + text);
                     });
                 }
             })

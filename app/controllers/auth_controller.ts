@@ -25,49 +25,76 @@ export default class AuthController {
     }
   }
   public async register({ request, response, auth }: HttpContext) {
-    const { fullName, email, password, organization } = request.only([
-      'fullName', 'email', 'password', 'organization'
-    ])
+    try {
+      const { fullName, email, password, organization } = request.only([
+        'fullName', 'email', 'password', 'organization'
+      ])
 
-    // Validación básica
-    if (!fullName || !email || !password || !organization) {
-      return response.badRequest({ message: 'Todos los campos son requeridos' })
+      // Validación básica
+      if (!fullName || !email || !password || !organization) {
+        return response.badRequest({ message: 'Todos los campos son requeridos' })
+      }
+
+      if (password.length < 6) {
+        return response.badRequest({ message: 'La contraseña debe tener al menos 6 caracteres' })
+      }
+
+      const user = await User.create({
+        fullName: fullName,
+        email: email,
+        password: await hash.make(password),
+      })
+
+      // Generar slug único
+      let baseSlug = organization.toLowerCase().replace(/[^a-z0-9\s-]/g, '').replace(/\s+/g, '-')
+      let slug = baseSlug
+      let counter = 1
+      
+      while (await Tenant.findBy('slug', slug)) {
+        slug = `${baseSlug}-${counter}`
+        counter++
+      }
+
+      const tenant = await Tenant.create({
+        name: organization,
+        slug: slug,
+        active: true,
+      })
+
+      await Database.table('tenant_user').insert({
+        tenant_id: tenant.id,
+        user_id: user.id,
+        role: 'owner',
+        active: true,
+        created_at: new Date(),
+        updated_at: new Date(),
+      })
+
+      return response.redirect('/login?success=Cuenta creada exitosamente. Inicia sesión para continuar.')
+    } catch (error) {
+      console.error('Error en registro:', error)
+      console.error('Error details:', error.message)
+      console.error('Error stack:', error.stack)
+      return response.badRequest({ 
+        message: 'Error al crear la cuenta. Inténtalo de nuevo.',
+        error: error.message 
+      })
     }
-
-    if (password.length < 6) {
-      return response.badRequest({ message: 'La contraseña debe tener al menos 6 caracteres' })
-    }
-
-    const user = await User.create({
-      fullName: fullName,
-      email: email,
-      password: await hash.make(password),
-    })
-
-    const tenant = await Tenant.create({
-      name: organization,
-      slug: organization.toLowerCase().replace(/\s+/g, '-'),
-    })
-
-    await Database.table('tenant_user').insert({
-      tenant_id: tenant.id,
-      user_id: user.id,
-      role: 'owner',
-      active: true,
-    })
-
-    await auth.use('web').login(user)
-    return response.redirect('/dashboard')
   }
 
   public async login({ request, response, auth }: HttpContext) {
-    const { email, password } = request.only(['email', 'password'])
-    
     try {
+      const { email, password } = request.only(['email', 'password'])
+      
+      if (!email || !password) {
+        return response.badRequest({ message: 'Email y contraseña son requeridos' })
+      }
+      
       const user = await User.verifyCredentials(email, password)
       await auth.use('web').login(user)
       return response.redirect('/dashboard')
     } catch (error) {
+      console.error('Error en login:', error)
       return response.badRequest({ message: 'Credenciales inválidas' })
     }
   }

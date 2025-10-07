@@ -154,21 +154,17 @@
             e.preventDefault();
             
             const formData = new FormData(this);
-            const data = Object.fromEntries(formData);
             
             fetch('/login', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(data)
+                body: formData
             })
             .then(response => {
                 if (response.ok) {
                     window.location.href = '/dashboard';
                 } else {
-                    return response.json().then(err => {
-                        throw new Error(err.message || 'Error al iniciar sesión');
+                    return response.text().then(text => {
+                        throw new Error('Error al iniciar sesión: ' + text);
                     });
                 }
             })

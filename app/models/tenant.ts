@@ -12,6 +12,9 @@ export default class Tenant extends BaseModel {
   @column()
   declare slug: string
 
+  @column()
+  declare active: boolean
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 
