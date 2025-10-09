@@ -65,9 +65,12 @@
     "@adonisjs/shield": "^8.2.0",
     "@adonisjs/static": "^1.1.1",
     "@adonisjs/vite": "^4.0.0",
+    "@hookform/resolvers": "^5.2.2",
     "@inertiajs/react": "^2.2.7",
     "@inertiajs/vue3": "^2.2.7",
+    "@radix-ui/react-label": "^2.1.7",
     "@radix-ui/react-slot": "^1.2.3",
+    "@tailwindcss/postcss": "^4.1.14",
     "@tailwindcss/typography": "^0.5.19",
     "@vinejs/vine": "^3.0.1",
     "autoprefixer": "^10.4.21",
@@ -81,12 +84,14 @@
     "postcss": "^8.5.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "react-hook-form": "^7.64.0",
     "reflect-metadata": "^0.2.2",
     "sqlite3": "^5.1.7",
     "tailwind-merge": "^3.3.1",
     "tailwindcss": "^4.1.14",
     "tailwindcss-animate": "^1.0.7",
-    "vue": "^3.5.22"
+    "vue": "^3.5.22",
+    "zod": "^4.1.12"
   },
   "hotHook": {
     "boundaries": [
