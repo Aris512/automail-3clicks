@@ -1,0 +1,25 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:latest
+    volumes:
+      - postgres_volume:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: adonisjs_todos
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - 5432:5432
+
+  redis:
+    container_name: redis
+    image: redis:alpine
+    volumes:
+      - redis_volume:/data
+    ports:
+      - 6379:6379
+
+volumes:
+  postgres_volume:
+  redis_volume:
+
