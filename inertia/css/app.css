@@ -2,6 +2,115 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Animaciones personalizadas para las páginas de autenticación */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+  }
+
+  .animate-slide-up {
+    animation: slideUp 0.8s ease-out forwards;
+  }
+
+  .animate-slide-up-delayed {
+    animation: slideUp 0.8s ease-out 0.2s both;
+  }
+
+  .animate-slide-up-card {
+    animation: slideUpCard 1s ease-out 0.3s both;
+  }
+
+  .animate-fade-in-delayed {
+    animation: fadeIn 0.6s ease-out 0.4s both;
+  }
+
+  .animate-fade-in-delayed-2 {
+    animation: fadeIn 0.6s ease-out 0.5s both;
+  }
+
+  .animate-fade-in-delayed-3 {
+    animation: fadeIn 0.6s ease-out 0.6s both;
+  }
+
+  .animate-fade-in-delayed-4 {
+    animation: fadeIn 0.6s ease-out 0.7s both;
+  }
+
+  .animate-fade-in-delayed-5 {
+    animation: fadeIn 0.6s ease-out 0.8s both;
+  }
+
+  .animate-fade-in-delayed-6 {
+    animation: fadeIn 0.6s ease-out 0.9s both;
+  }
+
+  .animate-fade-in-delayed-7 {
+    animation: fadeIn 0.6s ease-out 1s both;
+  }
+
+  /* Animaciones especiales para botones con transición de colores */
+  .btn-gradient-hover {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .btn-gradient-hover::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: #000000;
+    transition: left 0.32s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: -1;
+  }
+
+  .btn-gradient-hover:hover::before {
+    left: 0;
+  }
+
+  .btn-gradient-hover:hover {
+    transform: scale(1.02);
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideUpCard {
+  from {
+    opacity: 0;
+    transform: translateY(40px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 
 @layer base {
   :root {
