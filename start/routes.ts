@@ -24,7 +24,7 @@ router.get('/login', [AuthController, 'showLogin'])
 router.get('/register', [AuthController, 'showRegister'])
 
 // Dashboard - Página principal después del login (protegida)
-router.get('/dashboard', ({ inertia, response, auth }: HttpContext) => {
+router.get('/dashboard', ({ inertia, response, auth, session }: HttpContext) => {
   // Headers de seguridad para prevenir caché
   response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
   response.header('Pragma', 'no-cache')
@@ -32,8 +32,17 @@ router.get('/dashboard', ({ inertia, response, auth }: HttpContext) => {
   response.header('X-Frame-Options', 'DENY')
   response.header('X-Content-Type-Options', 'nosniff')
   
+  // Detectar si es la primera visita al dashboard después del login
+  const isFirstVisit = !session.get('dashboard_visited')
+  
+  // Marcar que el usuario ya visitó el dashboard
+  if (isFirstVisit) {
+    session.put('dashboard_visited', true)
+  }
+  
   return inertia.render('auth/dashboard', {
-    user: auth.user
+    user: auth.user,
+    isFirstVisit
   })
 }).use(middleware.auth())
 

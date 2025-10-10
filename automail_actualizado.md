@@ -55,10 +55,13 @@ tenant_user (pivot table)
   - role (owner/admin/member)
   - active, created_at, updated_at
 
-domains
-  - id, tenant_id, user_id, domain, smtp_host, smtp_port
-  - smtp_user (encrypted), smtp_password (encrypted)
+email_setup
+  - id, tenant_id, user_id, email, name, from,
   - active, created_at, updated_at
+
+SMTP_config
+  - user, password, host, port, protocole(insecure, ssl, tls) 
+  - email_setup_id "unique"  
 
 campaigns
   - id, tenant_id, user_id, domain_id, name, description
