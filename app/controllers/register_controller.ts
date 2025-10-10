@@ -5,93 +5,101 @@ import { HttpContext } from '@adonisjs/core/http'
 import { cuid } from '@adonisjs/core/helpers'
 import logger from '@adonisjs/core/services/logger'
 
-export default class RegisterController {
-  public async register({ request, response, auth }: HttpContext) {
-    const data = request.only(['email', 'password', 'organization_name'])
+function validateName(name: string, fieldName: string): { isValid: boolean; message?: string } {
+  if (!name || name.trim().length === 0) {
+    return { isValid: false, message: `El ${fieldName} es requerido` }
+  }
 
-    // 🔍 DEBUG: Log de datos recibidos
-    logger.info(' REGISTER ATTEMPT:', {
-      email: data.email,
-      organizationName: data.organization_name,
-      passwordLength: data.password?.length || 0,
-      timestamp: new Date().toISOString(),
-      userAgent: request.header('user-agent'),
-      ip: request.ip()
-    })
+  if (name.trim().length < 2) {
+    return { isValid: false, message: `El ${fieldName} debe tener al menos 2 caracteres` }
+  }
+
+  // Verificar que no contenga números
+  if (/\d/.test(name)) {
+    return { isValid: false, message: `El ${fieldName} no puede contener números` }
+  }
+
+  // Verificar que solo contenga letras, espacios y algunos caracteres especiales comunes
+  if (!/^[a-zA-ZáéíóúÁÉÍÓÚñÑüÜ\s'-]+$/.test(name)) {
+    return { isValid: false, message: `El ${fieldName} solo puede contener letras` }
+  }
+
+  return { isValid: true }
+}
+
+export default class RegisterController {
+  public async register({ request, response, auth, inertia }: HttpContext) {
+    const data = request.only(['email', 'password', 'organization_name', 'first_name', 'last_name'])
+
+    // Validar nombre
+    const firstNameValidation = validateName(data.first_name, 'nombre')
+    if (!firstNameValidation.isValid) {
+      return inertia.render('auth/register', {
+        errors: {
+          first_name: firstNameValidation.message
+        }
+      })
+    }
+
+    // Validar apellido
+    const lastNameValidation = validateName(data.last_name, 'apellido')
+    if (!lastNameValidation.isValid) {
+      return inertia.render('auth/register', {
+        errors: {
+          last_name: lastNameValidation.message
+        }
+      })
+    }
+
+    // Verificar si el email ya existe
+    const existingUser = await User.findBy('email', data.email)
+    if (existingUser) {
+      return inertia.render('auth/register', {
+        errors: {
+          email: 'Este correo electrónico ya está en uso'
+        }
+      })
+    }
+
+    // Validación mínima de contraseña (solo longitud)
+    if (!data.password || data.password.length < 6) {
+      return inertia.render('auth/register', {
+        errors: {
+          password: 'La contraseña debe tener al menos 6 caracteres'
+        }
+      })
+    }
 
     try {
-      // 🔍 DEBUG: Creando usuario
-      logger.info(' CREATING USER...')
       const user = await User.create({
         email: data.email,
         password: data.password,
+        fullName: `${data.first_name} ${data.last_name}`.trim(),
       })
 
-      logger.info(' USER CREATED:', {
-        userId: user.id,
-        email: user.email,
-        createdAt: user.createdAt?.toISO(),
-        timestamp: new Date().toISOString()
-      })
-
-      // 🔍 DEBUG: Creando tenant
       const slug = data.organization_name.toLowerCase().replace(/\s+/g, '-') + '-' + cuid().substring(0, 5)
-      logger.info(' CREATING TENANT...', { slug })
       
       const tenant = await Tenant.create({
         name: data.organization_name,
         slug: slug,
       })
 
-      logger.info(' TENANT CREATED:', {
-        tenantId: tenant.id,
-        name: tenant.name,
-        slug: tenant.slug,
-        createdAt: tenant.createdAt?.toISO(),
-        timestamp: new Date().toISOString()
-      })
-
-      // 🔍 DEBUG: Creando relación tenant-user
-      logger.info(' CREATING TENANT-USER RELATION...')
-      const tenantUser = await TenantUser.create({
+      await TenantUser.create({
         tenantId: tenant.id,
         userId: user.id,
         role: 'owner',
       })
 
-      logger.info(' TENANT-USER CREATED:', {
-        tenantUserId: tenantUser.id,
-        tenantId: tenantUser.tenantId,
-        userId: tenantUser.userId,
-        role: tenantUser.role,
-        createdAt: tenantUser.createdAt?.toISO(),
-        timestamp: new Date().toISOString()
-      })
-
-      // 🔍 DEBUG: Login automático
-      logger.info(' AUTO-LOGIN USER...')
       await auth.use('web').login(user)
-
-      logger.info(' REGISTRATION SUCCESS:', {
-        userId: user.id,
-        tenantId: tenant.id,
-        email: user.email,
-        organizationName: data.organization_name,
-        timestamp: new Date().toISOString()
-      })
 
       return response.redirect('/dashboard')
     } catch (error) {
-      // 🔍 DEBUG: Log de error
-      logger.error(' REGISTRATION ERROR:', {
-        email: data.email,
-        organizationName: data.organization_name,
-        error: error.message,
-        stack: error.stack,
-        timestamp: new Date().toISOString()
+      logger.error('Registration error:', error)
+      return inertia.render('auth/register', {
+        errors: {
+          general: 'Error al crear la cuenta'
+        }
       })
-
-      return response.badRequest('Error al crear la cuenta')
     }
   }
 }

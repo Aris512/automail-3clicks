@@ -3,16 +3,81 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../..
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
-import { FormEventHandler } from 'react'
+import ToastField from '../../components/ui/toast-field'
+import { useFieldMessages } from '../../hooks/useFieldMessages'
+import { validateEmailForLogin, validatePasswordForLogin } from '../../lib/validations'
+import { FormEventHandler, useEffect } from 'react'
 
 export default function Login() {
+  const { getMessage, showError, hideMessage } = useFieldMessages()
+  
   const { data, setData, post, processing, errors } = useForm({
     email: '',
     password: '',
   })
 
+  // Manejar errores del backend
+  useEffect(() => {
+    if (errors.email) {
+      showError('email', 'Email inválido', errors.email)
+    }
+    if (errors.password) {
+      showError('password', 'Contraseña incorrecta', errors.password)
+    }
+    if ((errors as any).general) {
+      showError('email', 'Error', (errors as any).general)
+    }
+  }, [errors, showError])
+
+  // Validación en tiempo real del email
+  useEffect(() => {
+    if (data.email && data.email.length > 0) {
+      const emailValidation = validateEmailForLogin(data.email)
+      if (!emailValidation.isValid && emailValidation.message) {
+        showError('email', 'Email inválido', emailValidation.message)
+      } else {
+        hideMessage('email')
+      }
+    } else {
+      hideMessage('email')
+    }
+  }, [data.email, showError, hideMessage])
+
+  // Validación en tiempo real de la contraseña
+  useEffect(() => {
+    if (data.password && data.password.length > 0) {
+      const passwordValidation = validatePasswordForLogin(data.password)
+      if (!passwordValidation.isValid && passwordValidation.message) {
+        showError('password', 'Contraseña inválida', passwordValidation.message)
+      } else {
+        hideMessage('password')
+      }
+    } else {
+      hideMessage('password')
+    }
+  }, [data.password, showError, hideMessage])
+
   const handleSubmit: FormEventHandler = (e) => {
     e.preventDefault()
+    
+    // Validar antes de enviar
+    const emailValidation = validateEmailForLogin(data.email)
+    const passwordValidation = validatePasswordForLogin(data.password)
+    
+    if (!emailValidation.isValid) {
+      showError('email', 'Email requerido', emailValidation.message)
+      return
+    }
+    
+    if (!passwordValidation.isValid) {
+      showError('password', 'Contraseña requerida', passwordValidation.message)
+      return
+    }
+    
+    // Limpiar mensajes de error antes de enviar
+    hideMessage('email')
+    hideMessage('password')
+    
     post('/login')
   }
 
@@ -40,7 +105,7 @@ export default function Login() {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label htmlFor="email">Email</Label>
                   <Input
                     id="email"
@@ -51,9 +116,18 @@ export default function Login() {
                     required
                   />
                   {errors.email && <p className="text-sm text-red-600">{errors.email}</p>}
+                  {getMessage('email') && (
+                    <ToastField
+                      show={getMessage('email')?.show || false}
+                      type={getMessage('email')?.type || 'error'}
+                      title={getMessage('email')?.title || ''}
+                      message={getMessage('email')?.message}
+                      onClose={() => hideMessage('email')}
+                    />
+                  )}
                 </div>
 
-                <div className="space-y-2">
+                <div className="space-y-2 relative">
                   <Label htmlFor="password">Contraseña</Label>
                   <Input
                     id="password"
@@ -64,6 +138,15 @@ export default function Login() {
                     required
                   />
                   {errors.password && <p className="text-sm text-red-600">{errors.password}</p>}
+                  {getMessage('password') && (
+                    <ToastField
+                      show={getMessage('password')?.show || false}
+                      type={getMessage('password')?.type || 'error'}
+                      title={getMessage('password')?.title || ''}
+                      message={getMessage('password')?.message}
+                      onClose={() => hideMessage('password')}
+                    />
+                  )}
                 </div>
 
                 <Button type="submit" className="w-full" disabled={processing}>
