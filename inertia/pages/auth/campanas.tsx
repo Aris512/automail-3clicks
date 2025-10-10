@@ -5,6 +5,7 @@ import {
   SidebarTrigger 
 } from '~/components/ui/sidebar'
 import AppSidebar from '~/components/AppSidebar'
+import { Megaphone } from 'lucide-react'
 
 interface User {
   id: number
@@ -12,14 +13,14 @@ interface User {
   email: string
 }
 
-interface DashboardProps {
+interface CampanasProps {
   user: User
 }
 
-export default function Dashboard({ user }: DashboardProps) {
+export default function Campanas({ user }: CampanasProps) {
   return (
     <>
-      <Head title="Dashboard" />
+      <Head title="Campañas" />
       
       <SidebarProvider>
         <AppSidebar user={user} />
@@ -28,7 +29,7 @@ export default function Dashboard({ user }: DashboardProps) {
           <header className="flex h-16 shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-4">
             <SidebarTrigger className="-ml-1 hover:bg-gray-100" />
             <div className="flex-1">
-              <h1 className="text-lg font-semibold text-gray-800">Dashboard</h1>
+              <h1 className="text-lg font-semibold text-gray-800">Campañas</h1>
             </div>
           </header>
           
@@ -36,18 +37,13 @@ export default function Dashboard({ user }: DashboardProps) {
             <div className="min-h-screen flex items-center justify-center bg-white">
               <div className="max-w-md w-full text-center">
                 <div className="animate-fade-in">
+                  <Megaphone className="h-16 w-16 text-orange-500 mx-auto mb-6 animate-slide-up" />
                   <h1 className="text-4xl font-extrabold text-gray-800 mb-4 animate-slide-up">
-                    🎉 Dashboard
+                    Campañas
                   </h1>
                   <p className="text-lg text-gray-600 mb-8 animate-slide-up-delayed">
-                    ¡Bienvenido! El login/register funcionó correctamente.
+                    Crear, editar, pausar o eliminar campañas.
                   </p>
-                </div>
-                <div className="bg-gradient-to-r from-orange-500 to-orange-600 text-white px-6 py-4 rounded-lg shadow-lg animate-slide-up-card hover:shadow-xl transition-all duration-300 ease-out">
-                  <div className="flex items-center justify-center gap-2">
-                    <span className="text-xl">✅</span>
-                    <span className="font-medium">Autenticación exitosa</span>
-                  </div>
                 </div>
               </div>
             </div>
