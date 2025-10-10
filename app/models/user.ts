@@ -1,8 +1,10 @@
 import { DateTime } from 'luxon'
 import hash from '@adonisjs/core/services/hash'
 import { compose } from '@adonisjs/core/helpers'
-import { BaseModel, column } from '@adonisjs/lucid/orm'
+import { BaseModel, column, hasMany } from '@adonisjs/lucid/orm'
 import { withAuthFinder } from '@adonisjs/auth/mixins/lucid'
+import TenantUser from './tenant_user.js'
+import Tenant from './tenant.js'
 
 const AuthFinder = withAuthFinder(() => hash.use('scrypt'), {
   uids: ['email'],
@@ -21,6 +23,14 @@ export default class User extends compose(BaseModel, AuthFinder) {
 
   @column({ serializeAs: null })
   declare password: string
+
+  @hasMany(() => TenantUser)
+  declare tenantUsers: any
+
+  @hasMany(() => Tenant, {
+    foreignKey: 'ownerId'
+  })
+  declare ownedTenants: any
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime

@@ -9,6 +9,15 @@ export default class extends BaseSchema {
       table.string('name').notNullable()
       table.string('slug').notNullable().unique()
       table.boolean('active').notNullable().defaultTo(true)
+      
+      // Relación directa con users (eliminación en cascada)
+      table
+        .integer('owner_id')
+        .unsigned()
+        .references('id')
+        .inTable('users')
+        .onDelete('CASCADE')
+      
       table.timestamps(true, true)
     })
   }
