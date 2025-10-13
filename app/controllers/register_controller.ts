@@ -3,7 +3,6 @@ import TenantUser from '#models/tenant_user'
 import User from '#models/user'
 import { HttpContext } from '@adonisjs/core/http'
 import { cuid } from '@adonisjs/core/helpers'
-import logger from '@adonisjs/core/services/logger'
 
 function validateName(name: string, fieldName: string): { isValid: boolean; message?: string } {
   if (!name || name.trim().length === 0) {
@@ -94,7 +93,6 @@ export default class RegisterController {
 
       return response.redirect('/dashboard')
     } catch (error) {
-      logger.error('Registration error:', error)
       return inertia.render('auth/register', {
         errors: {
           general: 'Error al crear la cuenta'

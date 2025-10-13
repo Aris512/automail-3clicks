@@ -39,13 +39,19 @@ export default class SmtpConfigsController {
 
       if (smtpConfig) {
         // Actualizar configuración existente
-        smtpConfig.merge({
+        const updateData: any = {
           user: username,
-          password: password,
           host: host,
           port: port,
           protocole: this.getProtocolByPort(parseInt(port))
-        })
+        }
+        
+        // Solo actualizar contraseña si se proporciona
+        if (password) {
+          updateData.password = password
+        }
+        
+        smtpConfig.merge(updateData)
         await smtpConfig.save()
       } else {
         // Crear nueva configuración SMTP

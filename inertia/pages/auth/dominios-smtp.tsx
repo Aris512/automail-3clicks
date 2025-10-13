@@ -72,7 +72,7 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
           host: result.data.host || '',
           port: result.data.port || '587',
           username: result.data.user || '',
-          password: '', // No cargar la contraseña por seguridad
+          password: '••••••••', // Indicar que hay contraseña guardada
           fromEmail: result.data.fromEmail || '',
           encryption: result.data.protocole || 'tls'
         })
@@ -97,9 +97,15 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   }
 
   const handleSaveSmtpConfig = async () => {
-    if (!smtpConfig.host || !smtpConfig.username || !smtpConfig.password) {
-      showError("❌ Campos Requeridos", "Por favor completa el servidor SMTP, usuario y contraseña")
+    if (!smtpConfig.host || !smtpConfig.username) {
+      showError(" Campos Requeridos", "Por favor completa el servidor SMTP, usuario y contraseña")
       return
+    }
+
+    // Si la contraseña es el placeholder, no la incluimos en el envío
+    const configToSend: any = { ...smtpConfig }
+    if (configToSend.password === '••••••••') {
+      delete configToSend.password
     }
 
     setIsSavingConfig(true)
@@ -111,7 +117,7 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
           'X-CSRF-TOKEN': getCsrfToken(),
           'Accept': 'application/json'
         },
-        body: JSON.stringify(smtpConfig)
+        body: JSON.stringify(configToSend)
       })
 
       const result = await response.json()
@@ -131,7 +137,7 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
 
   const handleSendTestEmail = async () => {
     if (!emailData.to || !emailData.subject || !emailData.message) {
-      showError("📝 Campos Incompletos", "Por favor completa el destinatario, asunto y mensaje del correo")
+      showError(" Campos Incompletos", "Por favor completa el destinatario, asunto y mensaje del correo")
       return
     }
 
@@ -150,15 +156,15 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       const result = await response.json()
 
       if (result.success) {
-        showSuccess("📧 Correo Enviado", `Tu correo de prueba se ha enviado exitosamente a ${emailData.to}`, 6000)
+        showSuccess(" Correo Enviado", `Tu correo de prueba se ha enviado exitosamente a ${emailData.to}`, 6000)
         // Limpiar formulario
         setEmailData({ to: '', subject: '', message: '' })
       } else {
-        showError("❌ Error al Enviar", result.message || "No se pudo enviar el correo de prueba")
+        showError(" Error al Enviar", result.message || "No se pudo enviar el correo de prueba")
       }
     } catch (error) {
       console.error('Error al enviar correo:', error)
-      showError("📧 Error de Envío", "No se pudo enviar el correo. Verifica tu configuración SMTP e inténtalo de nuevo.")
+      showError("Error de Envío", "No se pudo enviar el correo. Verifica tu configuración SMTP e inténtalo de nuevo.")
     } finally {
       setIsLoading(false)
     }

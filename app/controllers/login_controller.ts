@@ -2,7 +2,6 @@
 import { HttpContext } from '@adonisjs/core/http'
 import User from '#models/user'
 import hash from '@adonisjs/core/services/hash'
-import logger from '@adonisjs/core/services/logger'
 
 export default class LoginController {
   public async login({ request, auth, response, inertia }: HttpContext) {
@@ -32,8 +31,6 @@ export default class LoginController {
         })
       }
     } catch (error) {
-      logger.error('Login error:', error)
-      
       return inertia.render('auth/login', {
         errors: {
           general: 'Ocurrió un error inesperado'
