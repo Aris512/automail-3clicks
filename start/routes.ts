@@ -12,6 +12,7 @@ import { HttpContext } from '@adonisjs/core/http'
 import RegisterController from '#controllers/register_controller'
 import LoginController from '#controllers/login_controller'
 import AuthController from '#controllers/auth_controller'
+import EmailsController from '#controllers/emails_controller'
 import { middleware } from './kernel.js'
 
 // Página principal 
@@ -147,4 +148,7 @@ router.get('/configuracion-tenant', ({ inertia, response, auth }: HttpContext) =
 router.post('/login', [LoginController, 'login'])
 router.post('/logout', [LoginController, 'logout'])
 router.post('/register', [RegisterController, 'register'])
+
+// Rutas de correo electrónico (protegidas)
+router.post('/send-email', [EmailsController, 'sendEmail']).use(middleware.auth())
 
