@@ -5,6 +5,9 @@ export default class MailService {
 
   constructor() {
     const port = Number(process.env.SMTP_PORT)
+
+
+    
     
     // Configuración automática según el puerto
     const config = this.getSmtpConfigByPort(port)
