@@ -12,8 +12,16 @@ import { HttpContext } from '@adonisjs/core/http'
 import RegisterController from '#controllers/register_controller'
 import LoginController from '#controllers/login_controller'
 import AuthController from '#controllers/auth_controller'
-import EmailsController from '#controllers/emails_controller'
 import { middleware } from './kernel.js'
+
+// Rutas de API (sin Inertia) - Deben ir ANTES de las rutas de Inertia
+const EmailsController = () => import('#controllers/emails_controller')
+router.post('/test-email', [EmailsController, 'sendEmail'])
+
+// Ruta API simple para probar
+router.post('/api/test', ({ request, response }: HttpContext) => {
+  return response.json({ message: 'API funcionando', data: request.all() })
+})
 
 // Página principal 
 router.get('/', ({ response }: HttpContext) => {
