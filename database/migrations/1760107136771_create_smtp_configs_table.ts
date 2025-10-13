@@ -21,6 +21,8 @@ export default class extends BaseSchema {
       table.string('host', 255).notNullable()
       table.string('port', 255).notNullable()
       table.enum('protocole', ['insecure', 'ssl', 'tls']).notNullable()
+      
+      table.timestamps(true, true)
     })
   }
 

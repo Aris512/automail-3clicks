@@ -14,6 +14,10 @@ export default defineConfig({
       secure: env.get('MAIL_ENCRYPTION') === 'ssl',
     }),
   },
+  
+  // Configurar mailer por defecto
+  default: 'smtp',
+  
   from: {
     address: env.get('MAIL_FROM_ADDRESS')!,
     name: env.get('MAIL_FROM_NAME')!,

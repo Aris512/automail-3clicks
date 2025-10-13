@@ -160,3 +160,14 @@ router.post('/register', [RegisterController, 'register'])
 // Rutas de correo electrónico (protegidas)
 router.post('/send-email', [EmailsController, 'sendEmail']).use(middleware.auth())
 
+// Importar MailController y SmtpConfigsController
+const MailController = () => import('#controllers/mail_controller')
+const SmtpConfigsController = () => import('#controllers/smtp_configs_controller')
+
+// Rutas para configuración SMTP
+router.post('/smtp-config', [SmtpConfigsController, 'store']).use(middleware.auth())
+router.get('/smtp-config', [SmtpConfigsController, 'show']).use(middleware.auth())
+
+// Rutas para envío de correos
+router.post('/send-mail', [MailController, 'send']).use(middleware.auth())
+
