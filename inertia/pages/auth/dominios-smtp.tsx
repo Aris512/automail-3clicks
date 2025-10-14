@@ -23,7 +23,7 @@ interface DominiosSMTPProps {
 }
 
 export default function DominiosSMTP({ user }: DominiosSMTPProps) {
-  const { toasts, showSuccess, showError, removeToast } = useToast()
+  const { toasts, showSuccess, showError, showWarning, removeToast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
   const [isSavingConfig, setIsSavingConfig] = useState(false)
   
@@ -123,7 +123,11 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       const result = await response.json()
 
       if (result.success) {
-        showSuccess(" Configuración Guardada", "Tu servidor SMTP se ha configurado correctamente y está listo para enviar correos", 5000)
+        if (result.isDuplicate) {
+          showWarning(" Configuración Existente", result.message || "Ya tienes esta configuración SMTP guardada", 4000)
+        } else {
+          showSuccess(" Configuración Guardada", "Tu servidor SMTP se ha configurado correctamente y está listo para enviar correos", 5000)
+        }
       } else {
         showError(" Error al Guardar", result.message || "No se pudo guardar la configuración SMTP")
       }

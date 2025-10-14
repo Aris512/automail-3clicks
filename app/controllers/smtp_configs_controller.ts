@@ -51,6 +51,30 @@ export default class SmtpConfigsController {
         .where('emailSetupId', emailSetup.id)
         .first()
 
+      // Verificar si ya existe una configuración idéntica para este usuario
+      const existingConfig = await SmtpConfig.query()
+        .where('emailSetupId', emailSetup.id)
+        .where('user', username)
+        .where('host', host)
+        .where('port', port)
+        .where('protocole', this.getProtocolByPort(parseInt(port)))
+        .first()
+
+      if (existingConfig) {
+        return response.ok({
+          success: true,
+          message: 'Ya existe esa configuración',
+          isDuplicate: true,
+          data: {
+            id: existingConfig.id,
+            host: existingConfig.host,
+            port: existingConfig.port,
+            user: existingConfig.user,
+            protocole: existingConfig.protocole
+          }
+        })
+      }
+
       if (smtpConfig) {
         // Actualizar configuración existente
         const updateData: any = {
