@@ -28,27 +28,25 @@ export default class SmtpConfigsController {
         })
       }
 
-      // Buscar si ya existe una configuración para este usuario
-      let emailSetup = await EmailSetup.query()
-        .where('userId', user.id)
-        .where('active', true)
-        .first()
-
-      if (!emailSetup) {
-        // Crear nuevo EmailSetup
-        emailSetup = await EmailSetup.create({
-          tenantId: tenantUser.tenantId,
-          userId: user.id,
-          email: username,
-          name: 'Configuración SMTP',
-          from: fromEmail,
-          active: true
-        })
-      }
+      // Siempre crear un nuevo EmailSetup para cada configuración SMTP
+      const emailSetup = await EmailSetup.create({
+        tenantId: tenantUser.tenantId,
+        userId: user.id,
+        email: username,
+        name: 'Configuración SMTP',
+        from: fromEmail,
+        active: true
+      })
 
       // Verificar si ya existe una configuración idéntica para este usuario
+      // Buscar en todos los emailSetups del usuario
+      const userEmailSetups = await EmailSetup.query()
+        .where('userId', user.id)
+        .where('active', true)
+        .select('id')
+
       const existingConfig = await SmtpConfig.query()
-        .where('emailSetupId', emailSetup.id)
+        .whereIn('emailSetupId', userEmailSetups.map(setup => setup.id))
         .where('user', username)
         .where('host', host)
         .where('port', port)
@@ -101,36 +99,52 @@ export default class SmtpConfigsController {
   }
 
   /**
-   * Obtener configuración SMTP del usuario actual
+   * Obtener todas las configuraciones SMTP del usuario actual
    */
   async show({ response, auth }: HttpContext) {
     try {
       const user = auth.user!
       
-      const emailSetup = await EmailSetup.query()
+      const emailSetups = await EmailSetup.query()
         .where('userId', user.id)
         .where('active', true)
         .preload('smtpConfig')
-        .first()
+        .orderBy('createdAt', 'desc')
 
-      if (!emailSetup || !emailSetup.smtpConfig) {
+      if (!emailSetups.length) {
         return response.ok({
           success: true,
-          data: null,
-          message: 'No hay configuración SMTP guardada'
+          data: [],
+          message: 'No hay configuraciones SMTP guardadas'
         })
       }
 
+      // Filtrar solo los que tienen configuración SMTP
+      const configsWithSmtp = emailSetups.filter(setup => setup.smtpConfig)
+
+      if (!configsWithSmtp.length) {
+        return response.ok({
+          success: true,
+          data: [],
+          message: 'No hay configuraciones SMTP guardadas'
+        })
+      }
+
+      // Devolver todas las configuraciones
+      const configs = configsWithSmtp.map(setup => ({
+        id: setup.smtpConfig.id,
+        host: setup.smtpConfig.host,
+        port: setup.smtpConfig.port,
+        user: setup.smtpConfig.user,
+        protocole: setup.smtpConfig.protocole,
+        fromEmail: setup.from,
+        createdAt: setup.createdAt
+      }))
+
       return response.ok({
         success: true,
-        data: {
-          id: emailSetup.smtpConfig.id,
-          host: emailSetup.smtpConfig.host,
-          port: emailSetup.smtpConfig.port,
-          user: emailSetup.smtpConfig.user,
-          protocole: emailSetup.smtpConfig.protocole,
-          fromEmail: emailSetup.from
-        }
+        data: configs,
+        message: `${configs.length} configuración(es) SMTP encontrada(s)`
       })
     } catch (error) {
       console.error('Error al obtener configuración SMTP:', error)

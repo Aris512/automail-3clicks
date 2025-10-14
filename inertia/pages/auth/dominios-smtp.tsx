@@ -62,6 +62,16 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
   }
 
+  // Función para formatear fecha en formato MM-DD HH:MM
+  const formatDateTime = (dateString: string) => {
+    const date = new Date(dateString)
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${month}-${day} ${hours}:${minutes}`
+  }
+
   // Función para cargar configuraciones existentes
   const loadExistingConfigs = async () => {
     setIsLoadingConfigs(true)
@@ -78,8 +88,8 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       const result = await response.json()
 
       if (result.success && result.data) {
-        // Si hay una configuración existente, la agregamos a la lista
-        setExistingConfigs([result.data])
+        // Si hay configuraciones existentes, las agregamos a la lista
+        setExistingConfigs(Array.isArray(result.data) ? result.data : [result.data])
       } else {
         setExistingConfigs([])
       }
@@ -136,7 +146,7 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
           host: existingConfig.host || '',
           port: existingConfig.port || '587',
           username: existingConfig.user || '',
-          password: '••••••••', // Indicar que hay contraseña guardada
+          password: '', // Limpiar contraseña para que el usuario la ingrese
           fromEmail: existingConfig.fromEmail || '',
           encryption: existingConfig.protocole || 'tls'
         }))
@@ -199,11 +209,14 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       return
     }
 
-    // Si la contraseña es el placeholder, no la incluimos en el envío
-    const configToSend: any = { ...smtpConfig }
-    if (configToSend.password === '••••••••') {
-      delete configToSend.password
+    // Si estamos editando una configuración existente, requerir contraseña
+    if (isEditingExisting && !smtpConfig.password) {
+      showError(" Contraseña Requerida", "Por favor ingresa la contraseña para crear una nueva configuración")
+      return
     }
+
+    // Preparar datos para envío
+    const configToSend: any = { ...smtpConfig }
 
     // Si estamos editando una configuración existente, siempre crear una nueva
     // Esto se detecta cuando el provider cambió a 'custom' después de modificar campos
@@ -329,19 +342,21 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="provider">Configuraciones</Label>
+                      <Label htmlFor="provider">
+                        Configuraciones {existingConfigs.length > 0 && `(${existingConfigs.length})`}
+                      </Label>
                       <Select value={smtpConfig.provider} onValueChange={handleProviderChange} disabled={isLoadingConfigs}>
                         <SelectTrigger>
                           <SelectValue placeholder={isLoadingConfigs ? "Cargando configuraciones..." : "Selecciona tu configuracion de servidor"} />
                         </SelectTrigger>
                         <SelectContent>
                           {/* Configuraciones existentes */}
-                          {existingConfigs.map((config) => (
+                          {existingConfigs.map((config, index) => (
                             <SelectItem key={`existing_${config.id}`} value={`existing_${config.id}`}>
-                              <div className="flex flex-col">
-                                <span className="font-medium">{config.host}</span>
-                                <span className="text-xs text-gray-500">
-                                  {config.user} • Puerto {config.port}
+                              <div className="flex flex-col text-left">
+                                <span className="font-medium text-left">{config.host}</span>
+                                <span className="text-xs text-gray-500 text-left">
+                                  {config.user} • Puerto {config.port} • #{existingConfigs.length - index} • {formatDateTime(config.createdAt)}
                                 </span>
                               </div>
                             </SelectItem>
@@ -398,7 +413,7 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
                         <Input
                           id="password"
                           type="password"
-                          placeholder="Tu contraseña"
+                          placeholder={isEditingExisting ? "Ingresa la contraseña para crear nueva configuración" : "Tu contraseña"}
                           value={smtpConfig.password}
                           onChange={(e) => handleSmtpConfigChange('password', e.target.value)}
                         />
