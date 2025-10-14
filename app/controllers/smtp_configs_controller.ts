@@ -38,6 +38,7 @@ export default class SmtpConfigsController {
         active: true
       })
 
+      
       // Verificar si ya existe una configuración idéntica para este usuario
       // Buscar en todos los emailSetups del usuario
       const userEmailSetups = await EmailSetup.query()

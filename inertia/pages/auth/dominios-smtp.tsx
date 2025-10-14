@@ -275,6 +275,10 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
     // Preparar datos para envío
     const configToSend: any = { ...smtpConfig }
 
+
+
+
+    
     // Si estamos editando una configuración existente, siempre crear una nueva
     // Esto se detecta cuando el provider cambió a 'custom' después de modificar campos
     if (smtpConfig.provider === 'custom' && originalConfig) {
