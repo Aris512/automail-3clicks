@@ -1,7 +1,7 @@
 import { Head } from '@inertiajs/react'
 import AppSidebar from '~/components/AppSidebar'
 import { Globe, Mail, Send, Settings, TestTube } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -44,43 +44,12 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
     message: ''
   })
 
-  // Cargar configuración SMTP existente al montar el componente
-  useEffect(() => {
-    loadSmtpConfig()
-  }, [])
 
   // Función helper para obtener el token CSRF
   const getCsrfToken = () => {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
   }
 
-  const loadSmtpConfig = async () => {
-    try {
-      const response = await fetch('/smtp-config', {
-        method: 'GET',
-        headers: {
-          'X-CSRF-TOKEN': getCsrfToken(),
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-        }
-      })
-
-      const result = await response.json()
-
-      if (result.success && result.data) {
-        setSmtpConfig({
-          host: result.data.host || '',
-          port: result.data.port || '587',
-          username: result.data.user || '',
-          password: '••••••••', // Indicar que hay contraseña guardada
-          fromEmail: result.data.fromEmail || '',
-          encryption: result.data.protocole || 'tls'
-        })
-      }
-    } catch (error) {
-      console.error('Error al cargar configuración SMTP:', error)
-    }
-  }
 
   const handleSmtpConfigChange = (field: string, value: string) => {
     setSmtpConfig(prev => ({
