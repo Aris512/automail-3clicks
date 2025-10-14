@@ -33,7 +33,7 @@ export default class MailController {
       // Renderizar la plantilla HTML
       const htmlContent = await edge.render('emails/default', {
         subject,
-        messaje: message // Mantengo el typo del template original
+        messaje: message 
       })
 
       // Enviar el correo

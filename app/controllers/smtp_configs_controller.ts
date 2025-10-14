@@ -1,10 +1,11 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import SmtpConfig from '#models/smtp_config'
 import EmailSetup from '#models/email_setup'
+import TenantUser from '#models/tenant_user'
 
 export default class SmtpConfigsController {
   /**
-   * Guardar o actualizar configuración SMTP
+   * Guardar configuración SMTP
    */
   async store({ request, response, auth }: HttpContext) {
     const { host, port, username, password, fromEmail } = request.only([
@@ -14,6 +15,19 @@ export default class SmtpConfigsController {
     try {
       const user = auth.user!
       
+      // Obtener el tenant del usuario
+      const tenantUser = await TenantUser.query()
+        .where('userId', user.id)
+        .where('active', true)
+        .first()
+
+      if (!tenantUser) {
+        return response.badRequest({
+          success: false,
+          message: 'Usuario no tiene acceso a ningún tenant activo'
+        })
+      }
+
       // Buscar si ya existe una configuración para este usuario
       let emailSetup = await EmailSetup.query()
         .where('userId', user.id)
@@ -23,7 +37,7 @@ export default class SmtpConfigsController {
       if (!emailSetup) {
         // Crear nuevo EmailSetup
         emailSetup = await EmailSetup.create({
-          tenantId: 1, // Por ahora usar tenant por defecto
+          tenantId: tenantUser.tenantId,
           userId: user.id,
           email: username,
           name: 'Configuración SMTP',
