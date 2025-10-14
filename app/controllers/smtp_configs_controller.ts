@@ -156,6 +156,52 @@ export default class SmtpConfigsController {
   }
 
   /**
+   * Eliminar configuración SMTP
+   */
+  async destroy({ params, response, auth }: HttpContext) {
+    try {
+      const user = auth.user!
+      const configId = params.id
+
+      // Buscar la configuración SMTP
+      const smtpConfig = await SmtpConfig.query()
+        .where('id', configId)
+        .preload('emailSetup')
+        .first()
+
+      if (!smtpConfig) {
+        return response.notFound({
+          success: false,
+          message: 'Configuración SMTP no encontrada'
+        })
+      }
+
+      // Verificar que el usuario sea el propietario
+      if (smtpConfig.emailSetup.userId !== user.id) {
+        return response.forbidden({
+          success: false,
+          message: 'No tienes permisos para eliminar esta configuración'
+        })
+      }
+
+      // Eliminar la configuración SMTP y el email setup asociado
+      await smtpConfig.delete()
+      await smtpConfig.emailSetup.delete()
+
+      return response.ok({
+        success: true,
+        message: 'Configuración SMTP eliminada correctamente'
+      })
+    } catch (error) {
+      console.error('Error al eliminar configuración SMTP:', error)
+      return response.internalServerError({
+        success: false,
+        message: 'Error al eliminar la configuración SMTP'
+      })
+    }
+  }
+
+  /**
    * Determinar protocolo según el puerto
    */
   private getProtocolByPort(port: number): 'insecure' | 'ssl' | 'tls' {

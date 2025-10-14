@@ -167,6 +167,7 @@ const SmtpConfigsController = () => import('#controllers/smtp_configs_controller
 // Rutas para configuración SMTP
 router.post('/smtp-config', [SmtpConfigsController, 'store']).use(middleware.auth())
 router.get('/smtp-config', [SmtpConfigsController, 'show']).use(middleware.auth())
+router.delete('/smtp-config/:id', [SmtpConfigsController, 'destroy']).use(middleware.auth())
 
 // Rutas para envío de correos
 router.post('/send-mail', [MailController, 'send']).use(middleware.auth())

@@ -43,6 +43,12 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   const [isLoadingConfigs, setIsLoadingConfigs] = useState(false)
   const [isEditingExisting, setIsEditingExisting] = useState(false)
   const [originalConfig, setOriginalConfig] = useState<any>(null)
+  
+  // Estados para eliminación
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [configToDelete, setConfigToDelete] = useState<any>(null)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
   // Estados para envío de correo
   const [emailData, setEmailData] = useState({
@@ -194,6 +200,8 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
         }))
       }
     }
+    // Cerrar el dropdown después de seleccionar
+    setIsDropdownOpen(false)
   }
 
   const handleEmailDataChange = (field: string, value: string) => {
@@ -201,6 +209,55 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       ...prev,
       [field]: value
     }))
+  }
+
+  // Función para manejar eliminación de configuración
+  const handleDeleteConfig = (config: any) => {
+    setConfigToDelete(config)
+    setShowDeleteDialog(true)
+    // Cerrar el dropdown cuando se abre el diálogo
+    setIsDropdownOpen(false)
+    setSmtpConfig(prev => ({ ...prev, provider: '' }))
+  }
+
+  // Función para confirmar eliminación
+  const confirmDelete = async () => {
+    if (!configToDelete) return
+
+    setIsDeleting(true)
+    try {
+      const response = await fetch(`/smtp-config/${configToDelete.id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess(" Configuración Eliminada", `La configuración ${configToDelete.host} ha sido eliminada correctamente`, 4000)
+        // Recargar configuraciones después de eliminar
+        loadExistingConfigs()
+      } else {
+        showError(" Error al Eliminar", result.message || "No se pudo eliminar la configuración")
+      }
+    } catch (error) {
+      console.error('Error al eliminar configuración:', error)
+      showError("🔌 Error de Conexión", "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.")
+    } finally {
+      setIsDeleting(false)
+      setShowDeleteDialog(false)
+      setConfigToDelete(null)
+    }
+  }
+
+  // Función para cancelar eliminación
+  const cancelDelete = () => {
+    setShowDeleteDialog(false)
+    setConfigToDelete(null)
   }
 
   const handleSaveSmtpConfig = async () => {
@@ -345,21 +402,45 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
                       <Label htmlFor="provider">
                         Configuraciones {existingConfigs.length > 0 && `(${existingConfigs.length})`}
                       </Label>
-                      <Select value={smtpConfig.provider} onValueChange={handleProviderChange} disabled={isLoadingConfigs}>
+                      <Select 
+                        value={smtpConfig.provider} 
+                        onValueChange={handleProviderChange} 
+                        disabled={isLoadingConfigs}
+                        open={isDropdownOpen}
+                        onOpenChange={setIsDropdownOpen}
+                      >
                         <SelectTrigger>
                           <SelectValue placeholder={isLoadingConfigs ? "Cargando configuraciones..." : "Selecciona tu configuracion de servidor"} />
                         </SelectTrigger>
                         <SelectContent>
                           {/* Configuraciones existentes */}
                           {existingConfigs.map((config, index) => (
-                            <SelectItem key={`existing_${config.id}`} value={`existing_${config.id}`}>
-                              <div className="flex flex-col text-left">
-                                <span className="font-medium text-left">{config.host}</span>
-                                <span className="text-xs text-gray-500 text-left">
-                                  {config.user} • Puerto {config.port} • #{existingConfigs.length - index} • {formatDateTime(config.createdAt)}
-                                </span>
-                              </div>
-                            </SelectItem>
+                            <div key={`existing_${config.id}`} className="relative">
+                              <SelectItem value={`existing_${config.id}`}>
+                                <div className="flex flex-col text-left w-full">
+                                  <div className="flex justify-between items-center">
+                                    <span className="font-medium text-left">{config.host}</span>
+                                  </div>
+                                  <span className="text-xs text-gray-500 text-left">
+                                    {config.user} • Puerto {config.port} • #{existingConfigs.length - index} • {formatDateTime(config.createdAt)}
+                                  </span>
+                                </div>
+                              </SelectItem>
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleDeleteConfig(config)
+                                }}
+                                className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-md transition-colors flex items-center justify-center z-10"
+                                title="Eliminar configuración"
+                                type="button"
+                              >
+                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
                           ))}
                           
                           {/* Separador si hay configuraciones existentes */}
@@ -525,6 +606,52 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       
       {/* Toast Container para mensajes temporales */}
       <ToastContainer toasts={toasts} onClose={removeToast} />
+      
+      {/* Diálogo de confirmación para eliminar configuración */}
+      {showDeleteDialog && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="text-red-500 text-2xl">⚠️</div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Confirmar Eliminación
+              </h3>
+            </div>
+            
+            <p className="text-gray-600 mb-6">
+              ¿Estás seguro de que quieres eliminar la configuración <strong>{configToDelete?.host}</strong>?
+              <br />
+              <span className="text-sm text-gray-500">
+                Esta acción no se puede deshacer.
+              </span>
+            </p>
+            
+            <div className="flex gap-3 justify-end">
+              <Button
+                onClick={cancelDelete}
+                variant="outline"
+                disabled={isDeleting}
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={confirmDelete}
+                disabled={isDeleting}
+                className="bg-red-500 hover:bg-red-600 text-white"
+              >
+                {isDeleting ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Eliminando...
+                  </>
+                ) : (
+                  'Eliminar'
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   )
 }
