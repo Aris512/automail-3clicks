@@ -46,11 +46,6 @@ export default class SmtpConfigsController {
         })
       }
 
-      // Buscar configuración SMTP existente
-      let smtpConfig = await SmtpConfig.query()
-        .where('emailSetupId', emailSetup.id)
-        .first()
-
       // Verificar si ya existe una configuración idéntica para este usuario
       const existingConfig = await SmtpConfig.query()
         .where('emailSetupId', emailSetup.id)
@@ -75,33 +70,15 @@ export default class SmtpConfigsController {
         })
       }
 
-      if (smtpConfig) {
-        // Actualizar configuración existente
-        const updateData: any = {
-          user: username,
-          host: host,
-          port: port,
-          protocole: this.getProtocolByPort(parseInt(port))
-        }
-        
-        // Solo actualizar contraseña si se proporciona
-        if (password) {
-          updateData.password = password
-        }
-        
-        smtpConfig.merge(updateData)
-        await smtpConfig.save()
-      } else {
-        // Crear nueva configuración SMTP
-        smtpConfig = await SmtpConfig.create({
-          emailSetupId: emailSetup.id,
-          user: username,
-          password: password,
-          host: host,
-          port: port,
-          protocole: this.getProtocolByPort(parseInt(port))
-        })
-      }
+      // Siempre crear una nueva configuración SMTP
+      const smtpConfig = await SmtpConfig.create({
+        emailSetupId: emailSetup.id,
+        user: username,
+        password: password,
+        host: host,
+        port: port,
+        protocole: this.getProtocolByPort(parseInt(port))
+      })
 
       return response.ok({
         success: true,

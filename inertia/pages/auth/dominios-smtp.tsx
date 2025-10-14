@@ -1,7 +1,7 @@
 import { Head } from '@inertiajs/react'
 import AppSidebar from '~/components/AppSidebar'
 import { Globe, Mail, Send, Settings, TestTube } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
@@ -34,8 +34,15 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
     username: '',
     password: '',
     fromEmail: '',
-    encryption: 'tls'
+    encryption: 'tls',
+    provider: ''
   })
+
+  // Estados para configuraciones existentes
+  const [existingConfigs, setExistingConfigs] = useState<any[]>([])
+  const [isLoadingConfigs, setIsLoadingConfigs] = useState(false)
+  const [isEditingExisting, setIsEditingExisting] = useState(false)
+  const [originalConfig, setOriginalConfig] = useState<any>(null)
 
   // Estados para envío de correo
   const [emailData, setEmailData] = useState({
@@ -45,9 +52,43 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   })
 
 
+  // Cargar configuraciones existentes al montar el componente
+  useEffect(() => {
+    loadExistingConfigs()
+  }, [])
+
   // Función helper para obtener el token CSRF
   const getCsrfToken = () => {
     return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+  }
+
+  // Función para cargar configuraciones existentes
+  const loadExistingConfigs = async () => {
+    setIsLoadingConfigs(true)
+    try {
+      const response = await fetch('/smtp-config', {
+        method: 'GET',
+        headers: {
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const result = await response.json()
+
+      if (result.success && result.data) {
+        // Si hay una configuración existente, la agregamos a la lista
+        setExistingConfigs([result.data])
+      } else {
+        setExistingConfigs([])
+      }
+    } catch (error) {
+      console.error('Error al cargar configuraciones:', error)
+      setExistingConfigs([])
+    } finally {
+      setIsLoadingConfigs(false)
+    }
   }
 
 
@@ -56,6 +97,93 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       ...prev,
       [field]: value
     }))
+    
+    // Si estamos editando una configuración existente y se modifica un campo,
+    // cambiar el provider a 'custom' para indicar que es una nueva configuración
+    if (isEditingExisting && originalConfig) {
+      const hasChanged = (
+        (field === 'host' && value !== originalConfig.host) ||
+        (field === 'port' && value !== originalConfig.port) ||
+        (field === 'username' && value !== originalConfig.user) ||
+        (field === 'fromEmail' && value !== originalConfig.fromEmail) ||
+        (field === 'encryption' && value !== originalConfig.protocole)
+      )
+      
+      if (hasChanged) {
+        setSmtpConfig(prev => ({
+          ...prev,
+          provider: 'custom' // Cambiar a configuración personalizada
+        }))
+        setIsEditingExisting(false) // Ya no estamos editando la configuración original
+      }
+    }
+  }
+
+  const handleProviderChange = (provider: string) => {
+    // Si es una configuración existente (formato: "existing_${id}")
+    if (provider.startsWith('existing_')) {
+      const configId = provider.replace('existing_', '')
+      const existingConfig = existingConfigs.find(config => config.id.toString() === configId)
+      
+      if (existingConfig) {
+        // Guardar la configuración original para comparar cambios
+        setOriginalConfig(existingConfig)
+        setIsEditingExisting(true)
+        
+        setSmtpConfig(prev => ({
+          ...prev,
+          provider: provider,
+          host: existingConfig.host || '',
+          port: existingConfig.port || '587',
+          username: existingConfig.user || '',
+          password: '••••••••', // Indicar que hay contraseña guardada
+          fromEmail: existingConfig.fromEmail || '',
+          encryption: existingConfig.protocole || 'tls'
+        }))
+      }
+    } else {
+      // Configuraciones predefinidas
+      const providerConfigs = {
+        'gmail': {
+          host: 'smtp.gmail.com',
+          port: '587',
+          encryption: 'tls'
+        },
+        'outlook': {
+          host: 'smtp-mail.outlook.com',
+          port: '587',
+          encryption: 'tls'
+        },
+        'yahoo': {
+          host: 'smtp.mail.yahoo.com',
+          port: '587',
+          encryption: 'tls'
+        },
+        'custom': {
+          host: '',
+          port: '587',
+          encryption: 'tls'
+        }
+      }
+
+      const config = providerConfigs[provider as keyof typeof providerConfigs]
+      if (config) {
+        // Resetear estado de edición para nueva configuración
+        setIsEditingExisting(false)
+        setOriginalConfig(null)
+        
+        setSmtpConfig(prev => ({
+          ...prev,
+          provider: provider,
+          host: config.host,
+          port: config.port,
+          encryption: config.encryption,
+          username: '', // Limpiar usuario para nueva configuración
+          password: '', // Limpiar contraseña para nueva configuración
+          fromEmail: '' // Limpiar email remitente para nueva configuración
+        }))
+      }
+    }
   }
 
   const handleEmailDataChange = (field: string, value: string) => {
@@ -77,6 +205,13 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       delete configToSend.password
     }
 
+    // Si estamos editando una configuración existente, siempre crear una nueva
+    // Esto se detecta cuando el provider cambió a 'custom' después de modificar campos
+    if (smtpConfig.provider === 'custom' && originalConfig) {
+      // Limpiar el provider para que se trate como nueva configuración
+      delete configToSend.provider
+    }
+
     setIsSavingConfig(true)
     try {
       const response = await fetch('/smtp-config', {
@@ -95,7 +230,18 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
         if (result.isDuplicate) {
           showWarning(" Configuración Existente", result.message || "Ya tienes esta configuración SMTP guardada", 4000)
         } else {
-          showSuccess(" Configuración Guardada", "Tu servidor SMTP se ha configurado correctamente y está listo para enviar correos", 5000)
+          // Determinar el mensaje según si se creó una nueva configuración o se actualizó
+          const message = (smtpConfig.provider === 'custom' && originalConfig) 
+            ? "Nueva configuración SMTP creada basada en la configuración existente"
+            : "Tu servidor SMTP se ha configurado correctamente y está listo para enviar correos"
+          
+          showSuccess(" Configuración Guardada", message, 5000)
+          // Recargar configuraciones después de guardar
+          loadExistingConfigs()
+          
+          // Resetear estados después de guardar
+          setIsEditingExisting(false)
+          setOriginalConfig(null)
         }
       } else {
         showError(" Error al Guardar", result.message || "No se pudo guardar la configuración SMTP")
@@ -182,6 +328,34 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="provider">Configuraciones</Label>
+                      <Select value={smtpConfig.provider} onValueChange={handleProviderChange} disabled={isLoadingConfigs}>
+                        <SelectTrigger>
+                          <SelectValue placeholder={isLoadingConfigs ? "Cargando configuraciones..." : "Selecciona tu configuracion de servidor"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {/* Configuraciones existentes */}
+                          {existingConfigs.map((config) => (
+                            <SelectItem key={`existing_${config.id}`} value={`existing_${config.id}`}>
+                              <div className="flex flex-col">
+                                <span className="font-medium">{config.host}</span>
+                                <span className="text-xs text-gray-500">
+                                  {config.user} • Puerto {config.port}
+                                </span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                          
+                          {/* Separador si hay configuraciones existentes */}
+                          {existingConfigs.length > 0 && (
+                            <div className="border-t border-gray-200 my-1"></div>
+                          )}
+                          <SelectItem value="custom">Configuración Personalizada</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="host">Servidor SMTP</Label>
