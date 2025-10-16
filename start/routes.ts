@@ -14,14 +14,12 @@ import LoginController from '#controllers/login_controller'
 import AuthController from '#controllers/auth_controller'
 import { middleware } from './kernel.js'
 
+// Importar MailController
+const MailController = () => import('#controllers/mail_controller')
+
 // Rutas de API (sin Inertia) - Deben ir ANTES de las rutas de Inertia
 const EmailsController = () => import('#controllers/emails_controller')
 router.post('/test-email', [EmailsController, 'sendEmail'])
-
-// Ruta API simple para probar
-router.post('/api/test', ({ request, response }: HttpContext) => {
-  return response.json({ message: 'API funcionando', data: request.all() })
-})
 
 // Página principal 
 router.get('/', ({ response }: HttpContext) => {
@@ -160,14 +158,14 @@ router.post('/register', [RegisterController, 'register'])
 // Rutas de correo electrónico (protegidas)
 router.post('/send-email', [EmailsController, 'sendEmail']).use(middleware.auth())
 
-// Importar MailController y SmtpConfigsController
-const MailController = () => import('#controllers/mail_controller')
+// Importar SmtpConfigsController
 const SmtpConfigsController = () => import('#controllers/smtp_configs_controller')
 
 // Rutas para configuración SMTP
 router.post('/smtp-config', [SmtpConfigsController, 'store']).use(middleware.auth())
 router.get('/smtp-config', [SmtpConfigsController, 'show']).use(middleware.auth())
 router.delete('/smtp-config/:id', [SmtpConfigsController, 'destroy']).use(middleware.auth())
+router.put('/smtp-config/:id/activate', [SmtpConfigsController, 'activate']).use(middleware.auth())
 
 // Rutas para envío de correos
 router.post('/send-mail', [MailController, 'send']).use(middleware.auth())

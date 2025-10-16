@@ -139,6 +139,7 @@ export default class SmtpConfigsController {
         user: setup.smtpConfig.user,
         protocole: setup.smtpConfig.protocole,
         fromEmail: setup.from,
+        isActive: setup.smtpConfig.isActive,
         createdAt: setup.createdAt
       }))
 
@@ -198,6 +199,67 @@ export default class SmtpConfigsController {
       return response.internalServerError({
         success: false,
         message: 'Error al eliminar la configuración SMTP'
+      })
+    }
+  }
+
+  /**
+   * Activar una configuración SMTP específica
+   */
+  async activate({ params, response, auth }: HttpContext) {
+    try {
+      const user = auth.user!
+      const configId = params.id
+
+      // Buscar la configuración SMTP
+      const smtpConfig = await SmtpConfig.query()
+        .where('id', configId)
+        .preload('emailSetup')
+        .first()
+
+      if (!smtpConfig) {
+        return response.notFound({
+          success: false,
+          message: 'Configuración SMTP no encontrada'
+        })
+      }
+
+      // Verificar que el usuario sea el propietario
+      if (smtpConfig.emailSetup.userId !== user.id) {
+        return response.forbidden({
+          success: false,
+          message: 'No tienes permisos para activar esta configuración'
+        })
+      }
+
+      // Desactivar todas las configuraciones del usuario
+      await SmtpConfig.query()
+        .whereHas('emailSetup', (query) => {
+          query.where('userId', user.id)
+        })
+        .update({ isActive: false })
+
+      // Activar la configuración seleccionada
+      smtpConfig.isActive = true
+      await smtpConfig.save()
+
+      return response.ok({
+        success: true,
+        message: 'Configuración SMTP activada correctamente',
+        data: {
+          id: smtpConfig.id,
+          host: smtpConfig.host,
+          port: smtpConfig.port,
+          user: smtpConfig.user,
+          protocole: smtpConfig.protocole,
+          isActive: smtpConfig.isActive
+        }
+      })
+    } catch (error) {
+      console.error('Error al activar configuración SMTP:', error)
+      return response.internalServerError({
+        success: false,
+        message: 'Error al activar la configuración SMTP'
       })
     }
   }

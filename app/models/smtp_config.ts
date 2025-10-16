@@ -24,6 +24,9 @@ export default class SmtpConfig extends BaseModel {
   @column()
   declare protocole: 'insecure' | 'ssl' | 'tls'
 
+  @column()
+  declare isActive: boolean
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

@@ -49,6 +49,9 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   const [configToDelete, setConfigToDelete] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  
+  // Estados para activación
+  const [isActivating, setIsActivating] = useState(false)
 
   // Estados para envío de correo
   const [emailData, setEmailData] = useState({
@@ -260,6 +263,41 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
     setConfigToDelete(null)
   }
 
+  // Función para activar una configuración SMTP
+  const handleActivateConfig = async (config: any) => {
+    if (config.isActive) {
+      showWarning(" Ya Activa", `La configuración ${config.host} ya está activa`)
+      return
+    }
+
+    setIsActivating(true)
+    try {
+      const response = await fetch(`/smtp-config/${config.id}/activate`, {
+        method: 'PUT',
+        headers: {
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess(" Configuración Activada", `Ahora estás usando la configuración ${config.host} (${config.user})`, 4000)
+        // Recargar configuraciones después de activar
+        loadExistingConfigs()
+      } else {
+        showError(" Error al Activar", result.message || "No se pudo activar la configuración")
+      }
+    } catch (error) {
+      console.error('Error al activar configuración:', error)
+      showError("🔌 Error de Conexión", "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.")
+    } finally {
+      setIsActivating(false)
+    }
+  }
+
   const handleSaveSmtpConfig = async () => {
     if (!smtpConfig.host || !smtpConfig.username) {
       showError(" Campos Requeridos", "Por favor completa el servidor SMTP, usuario y contraseña")
@@ -424,12 +462,44 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
                                 <div className="flex flex-col text-left w-full">
                                   <div className="flex justify-between items-center">
                                     <span className="font-medium text-left">{config.host}</span>
+                                    {config.isActive && (
+                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                                        Activa
+                                      </span>
+                                    )}
                                   </div>
                                   <span className="text-xs text-gray-500 text-left">
                                     {config.user} • Puerto {config.port} • #{existingConfigs.length - index} • {formatDateTime(config.createdAt)}
                                   </span>
                                 </div>
                               </SelectItem>
+                              
+                              {/* Botón de activación (checkmark verde) */}
+                              <button
+                                onClick={(e) => {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  handleActivateConfig(config)
+                                }}
+                                disabled={isActivating}
+                                className={`absolute left-2 top-1/2 transform -translate-y-1/2 p-1 rounded-md transition-colors flex items-center justify-center z-10 ${
+                                  config.isActive 
+                                    ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer' 
+                                    : 'bg-gray-200 hover:bg-green-500 hover:text-white text-gray-500 cursor-pointer'
+                                }`}
+                                title={config.isActive ? "Configuración activa" : "Activar configuración"}
+                                type="button"
+                              >
+                                {isActivating ? (
+                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                                ) : (
+                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                  </svg>
+                                )}
+                              </button>
+                              
+                              {/* Botón de eliminación */}
                               <button
                                 onClick={(e) => {
                                   e.preventDefault()
