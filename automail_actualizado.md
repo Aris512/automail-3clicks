@@ -80,17 +80,25 @@ templates
   - id, tenant_id, stage_id, name, subject, body_markdown
   - available_variables, active, created_at, updated_at
 
-sucribers
+subscribers
   - id, tenant_id, name, email, description
   - status (active/unsubscribed)
   - current_stage, last_sent_at, created_at, updated_at
 
 list
-  -id, 
+  -id, tenant_id, name, slug, description(nullable)
+  -status (active/inactive/archived)
+  -created_by (con user_id, nullable)
+   -created_at, updated_at
 
-suscriber_lists
+subscriber_lists
   -id, suscriber_id, list_id
-  
+  -source (manual/form/import)
+  -status (active/unsubscribed)
+  -created_at, updated_at
+  -subscribed_at
+  -status
+
 
 
 sendings
