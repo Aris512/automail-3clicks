@@ -33,6 +33,76 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
+  const [emailError, setEmailError] = useState<string>('')
+  const [editEmailError, setEditEmailError] = useState<string>('')
+
+  // Función de validación de email simplificada
+  const validateEmail = (email: string): { isValid: boolean; message?: string } => {
+    if (!email || email.trim() === '') {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    // Verificar longitud mínima y máxima
+    if (email.length < 5) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    if (email.length > 254) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    // Verificar que no tenga espacios al inicio o final
+    if (email !== email.trim()) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    // Regex más robusta para validación de email
+    const emailRegex = /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/
+    
+    if (!emailRegex.test(email)) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    // Verificar que no tenga caracteres consecutivos problemáticos
+    if (email.includes('..') || email.includes('@@')) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    // Verificar que el dominio tenga al menos un punto
+    const domain = email.split('@')[1]
+    if (!domain || !domain.includes('.')) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    // Verificar que el dominio no termine en punto
+    if (domain.endsWith('.')) {
+      return { isValid: false, message: 'Ejemplo: usuario@dominio.com' }
+    }
+
+    return { isValid: true }
+  }
+
+  // Función para validar email en tiempo real (formulario de agregar)
+  const handleEmailChange = (email: string) => {
+    setFormData('email', email)
+    if (email.length > 0) {
+      const validation = validateEmail(email)
+      setEmailError(validation.isValid ? '' : validation.message!)
+    } else {
+      setEmailError('')
+    }
+  }
+
+  // Función para validar email en tiempo real (formulario de editar)
+  const handleEditEmailChange = (email: string) => {
+    setEditData('email', email)
+    if (email.length > 0) {
+      const validation = validateEmail(email)
+      setEditEmailError(validation.isValid ? '' : validation.message!)
+    } else {
+      setEditEmailError('')
+    }
+  }
 
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
@@ -63,6 +133,15 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    
+    // Validación de email en el frontend usando la función mejorada
+    const emailValidation = validateEmail(formData.email)
+    if (!emailValidation.isValid) {
+      setNotification({ type: 'error', message: emailValidation.message! })
+      setTimeout(() => setNotification(null), 5000)
+      return
+    }
+    
     post('/subscribers', {
       onSuccess: () => {
         reset()
@@ -100,9 +179,19 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     console.log('Enviando formulario de edición:', editData)
     console.log('ID del contacto:', editingSubscriber?.id)
     
+    // Validación de email en el frontend usando la función mejorada
+    const emailValidation = validateEmail(editData.email)
+    if (!emailValidation.isValid) {
+      setNotification({ type: 'error', message: emailValidation.message! })
+      setTimeout(() => setNotification(null), 5000)
+      return
+    }
+    
     if (editingSubscriber) {
       // Usar router.put directamente en lugar de put del useForm
       router.put(`/subscribers/${editingSubscriber.id}`, editData, {
+        preserveState: true,
+        preserveScroll: true,
         onSuccess: (page) => {
           console.log('Edición exitosa:', page)
           handleCloseEdit()
@@ -134,6 +223,8 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const confirmDelete = () => {
     if (showDeleteConfirm.subscriber) {
       router.delete(`/subscribers/${showDeleteConfirm.subscriber.id}`, {
+        preserveState: true,
+        preserveScroll: true,
         onSuccess: () => {
           setShowDeleteConfirm({show: false, subscriber: null})
           setNotification({ type: 'success', message: '¡Contacto eliminado correctamente!' })
@@ -275,18 +366,20 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Email *
                       </label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData('email', e.target.value)}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
-                          errors.email ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                        placeholder="correo@ejemplo.com"
-                        required
-                      />
-                      {errors.email && (
-                        <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+                        <input
+                          type="email"
+                          value={formData.email}
+                          onChange={(e) => handleEmailChange(e.target.value)}
+                          className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                            errors.email || emailError ? 'border-red-300' : 'border-gray-300'
+                          }`}
+                          placeholder="correo@ejemplo.com"
+                          required
+                          pattern="[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*"
+                          title="Ingresa un email válido (ejemplo: usuario@dominio.com)"
+                        />
+                      {(errors.email || emailError) && (
+                        <p className="mt-1 text-sm text-red-600">{errors.email || emailError}</p>
                       )}
                     </div>
                     <div>
@@ -696,18 +789,20 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Email *
                     </label>
-                    <input
-                      type="email"
-                      value={editData.email}
-                      onChange={(e) => setEditData('email', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
-                        editErrors.email ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="correo@ejemplo.com"
-                      required
-                    />
-                    {editErrors.email && (
-                      <p className="mt-1 text-sm text-red-600">{editErrors.email}</p>
+                      <input
+                        type="email"
+                        value={editData.email}
+                        onChange={(e) => handleEditEmailChange(e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                          editErrors.email || editEmailError ? 'border-red-300' : 'border-gray-300'
+                        }`}
+                        placeholder="correo@ejemplo.com"
+                        required
+                        pattern="[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*"
+                        title="Ingresa un email válido (ejemplo: usuario@dominio.com)"
+                      />
+                    {(editErrors.email || editEmailError) && (
+                      <p className="mt-1 text-sm text-red-600">{editErrors.email || editEmailError}</p>
                     )}
                   </div>
                   
