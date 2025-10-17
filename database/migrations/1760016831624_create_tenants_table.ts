@@ -10,13 +10,13 @@ export default class extends BaseSchema {
       table.string('slug').notNullable().unique()
       table.boolean('active').notNullable().defaultTo(true)
       
-      // Relación directa con users (eliminación en cascada)
+      // Relación directa con users (owner se establece a NULL si se elimina)
       table
         .integer('owner_id')
         .unsigned()
         .references('id')
         .inTable('users')
-        .onDelete('CASCADE')
+        .onDelete('SET NULL')
       
       table.timestamps(true, true)
     })
