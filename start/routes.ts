@@ -17,6 +17,11 @@ import { middleware } from './kernel.js'
 // Importar MailController
 const MailController = () => import('#controllers/mail_controller')
 
+// Importar controladores de contactos
+const SubscribersController = () => import('#controllers/subscribers_controller')
+const ListsController = () => import('#controllers/lists_controller')
+const SubscribersListsController = () => import('#controllers/subscribers_lists_controller')
+
 // Rutas de API (sin Inertia) - Deben ir ANTES de las rutas de Inertia
 const EmailsController = () => import('#controllers/emails_controller')
 router.post('/test-email', [EmailsController, 'sendEmail'])
@@ -78,17 +83,7 @@ router.get('/etapas-plantillas', ({ inertia, response, auth }: HttpContext) => {
   })
 }).use(middleware.auth())
 
-router.get('/contactos', ({ inertia, response, auth }: HttpContext) => {
-  response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
-  response.header('Pragma', 'no-cache')
-  response.header('Expires', '0')
-  response.header('X-Frame-Options', 'DENY')
-  response.header('X-Content-Type-Options', 'nosniff')
-  
-  return inertia.render('auth/contactos', {
-    user: auth.user
-  })
-}).use(middleware.auth())
+router.get('/contactos', [SubscribersController, 'index']).use(middleware.auth())
 
 router.get('/dominios-smtp', ({ inertia, response, auth }: HttpContext) => {
   response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
@@ -169,4 +164,30 @@ router.put('/smtp-config/:id/activate', [SmtpConfigsController, 'activate']).use
 
 // Rutas para envío de correos
 router.post('/send-mail', [MailController, 'send']).use(middleware.auth())
+
+// Rutas para contactos (subscribers)
+router.get('/subscribers', [SubscribersController, 'index']).use(middleware.auth())
+router.post('/subscribers', [SubscribersController, 'store']).use(middleware.auth())
+router.get('/subscribers/:id', [SubscribersController, 'show']).use(middleware.auth())
+router.put('/subscribers/:id', [SubscribersController, 'update']).use(middleware.auth())
+router.delete('/subscribers/:id', [SubscribersController, 'destroy']).use(middleware.auth())
+router.post('/subscribers/import', [SubscribersController, 'import']).use(middleware.auth())
+router.get('/subscribers/export', [SubscribersController, 'export']).use(middleware.auth())
+
+// Rutas para listas
+router.get('/lists', [ListsController, 'index']).use(middleware.auth())
+router.post('/lists', [ListsController, 'store']).use(middleware.auth())
+router.get('/lists/:id', [ListsController, 'show']).use(middleware.auth())
+router.put('/lists/:id', [ListsController, 'update']).use(middleware.auth())
+router.delete('/lists/:id', [ListsController, 'destroy']).use(middleware.auth())
+router.get('/lists/:id/subscribers', [ListsController, 'subscribers']).use(middleware.auth())
+
+// Rutas para relaciones contacto-lista
+router.get('/subscribers-lists', [SubscribersListsController, 'index']).use(middleware.auth())
+router.post('/subscribers-lists', [SubscribersListsController, 'store']).use(middleware.auth())
+router.get('/subscribers-lists/:id', [SubscribersListsController, 'show']).use(middleware.auth())
+router.put('/subscribers-lists/:id', [SubscribersListsController, 'update']).use(middleware.auth())
+router.delete('/subscribers-lists/:id', [SubscribersListsController, 'destroy']).use(middleware.auth())
+router.post('/subscribers-lists/add-to-lists', [SubscribersListsController, 'addToLists']).use(middleware.auth())
+router.post('/subscribers-lists/remove-from-lists', [SubscribersListsController, 'removeFromLists']).use(middleware.auth())
 

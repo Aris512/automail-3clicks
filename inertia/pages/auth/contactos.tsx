@@ -1,7 +1,7 @@
-import { Head } from '@inertiajs/react'
+import { Head, useForm, router } from '@inertiajs/react'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, FileText, Search, Filter, MoreVertical, Edit, Trash2, Mail, Calendar } from 'lucide-react'
-import { useState } from 'react'
+import { Users, Plus, Upload, FileText, Search, Filter, Edit, Trash2, Mail, Calendar } from 'lucide-react'
+import { useState, useEffect } from 'react'
 
 interface User {
   id: number
@@ -14,18 +14,125 @@ interface Subscriber {
   email: string
   name: string
   description?: string
-  status: 'active' | 'unsubscribed'
+  status: 'active' | 'inactive' | 'archived'
   createdAt: string
 }
 
 interface ContactosProps {
   user: User
   subscribers?: Subscriber[]
+  flash?: {
+    success?: string
+    error?: string
+  }
 }
 
-export default function Contactos({ user, subscribers = [] }: ContactosProps) {
+export default function Contactos({ user, subscribers = [], flash }: ContactosProps) {
   const [activeTab, setActiveTab] = useState<'manual' | 'form' | 'import'>('manual')
   const [searchTerm, setSearchTerm] = useState('')
+  const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
+  const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
+
+  // Mostrar notificación si hay mensaje flash
+  useEffect(() => {
+    if (flash?.success) {
+      setNotification({ type: 'success', message: flash.success })
+    } else if (flash?.error) {
+      setNotification({ type: 'error', message: flash.error })
+    }
+  }, [flash])
+
+  // Formulario para agregar contacto manualmente
+  const { data: formData, setData: setFormData, post, processing, errors, reset } = useForm({
+    name: '',
+    email: '',
+    description: '',
+    listId: '',
+    status: 'active'
+  })
+
+  // Formulario para editar contacto
+  const { data: editData, setData: setEditData, processing: editProcessing, errors: editErrors, reset: resetEdit } = useForm({
+    name: '',
+    email: '',
+    description: '',
+    status: 'active'
+  })
+
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    post('/subscribers', {
+      onSuccess: () => {
+        reset()
+        // El mensaje de éxito se mostrará automáticamente desde flash
+      },
+      onError: (errors) => {
+        console.error('Errores del formulario:', errors)
+        // Los errores se mostrarán automáticamente en los campos
+      }
+    })
+  }
+
+  // Función para abrir modal de edición
+  const handleEdit = (subscriber: Subscriber) => {
+    setEditingSubscriber(subscriber)
+    setEditData({
+      name: subscriber.name,
+      email: subscriber.email,
+      description: subscriber.description || '',
+      status: subscriber.status
+    })
+  }
+
+  // Función para cerrar modal de edición
+  const handleCloseEdit = () => {
+    setEditingSubscriber(null)
+    resetEdit()
+  }
+
+  // Función para enviar formulario de edición
+  const handleEditSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    console.log('Enviando formulario de edición:', editData)
+    console.log('ID del contacto:', editingSubscriber?.id)
+    
+    if (editingSubscriber) {
+      // Usar router.put directamente en lugar de put del useForm
+      router.put(`/subscribers/${editingSubscriber.id}`, editData, {
+        onSuccess: (page) => {
+          console.log('Edición exitosa:', page)
+          handleCloseEdit()
+          // El mensaje de éxito se mostrará automáticamente desde flash
+        },
+        onError: (errors) => {
+          console.error('Errores del formulario de edición:', errors)
+          // Mostrar errores específicos
+          if (errors.email) {
+            alert(`Error de email: ${errors.email}`)
+          } else if (errors.name) {
+            alert(`Error de nombre: ${errors.name}`)
+          } else {
+            alert('Error al actualizar el contacto. Por favor, verifica los datos.')
+          }
+        }
+      })
+    }
+  }
+
+  // Función para confirmar borrado
+  const handleDelete = (subscriberId: number) => {
+    if (confirm('¿Estás seguro de que quieres eliminar este contacto?')) {
+      router.delete(`/subscribers/${subscriberId}`, {
+        onSuccess: () => {
+          // El mensaje de éxito se mostrará automáticamente desde flash
+        },
+        onError: (errors) => {
+          console.error('Error al eliminar contacto:', errors)
+        }
+      })
+    }
+  }
 
   const filteredSubscribers = subscribers.filter(subscriber =>
     subscriber.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -38,6 +145,25 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
       <Head title="Contactos" />
       
       <AppSidebar user={user} pageTitle="Contactos">
+        {/* Notificación */}
+        {notification && (
+          <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
+            notification.type === 'success' 
+              ? 'bg-green-500 text-white' 
+              : 'bg-red-500 text-white'
+          }`}>
+            <div className="flex items-center space-x-2">
+              <span>{notification.message}</span>
+              <button
+                onClick={() => setNotification(null)}
+                className="ml-2 text-white hover:text-gray-200"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        )}
+        
         <div className="min-h-screen bg-gray-50">
           {/* Header */}
           <div className="bg-white shadow-sm border-b">
@@ -108,16 +234,24 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
               <div className="space-y-6">
                 <div className="bg-white rounded-lg shadow-sm border p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Agregar Contacto Manualmente</h3>
-                  <form className="space-y-4">
+                  <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
                         Nombre *
                       </label>
                       <input
                         type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        value={formData.name}
+                        onChange={(e) => setFormData('name', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                          errors.name ? 'border-red-300' : 'border-gray-300'
+                        }`}
                         placeholder="Ingresa el nombre completo"
+                        required
                       />
+                      {errors.name && (
+                        <p className="mt-1 text-sm text-red-600">{errors.name}</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -125,9 +259,17 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
                       </label>
                       <input
                         type="email"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        value={formData.email}
+                        onChange={(e) => setFormData('email', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                          errors.email ? 'border-red-300' : 'border-gray-300'
+                        }`}
                         placeholder="correo@ejemplo.com"
+                        required
                       />
+                      {errors.email && (
+                        <p className="mt-1 text-sm text-red-600">{errors.email}</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -135,33 +277,49 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
                       </label>
                       <textarea
                         rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        value={formData.description}
+                        onChange={(e) => setFormData('description', e.target.value)}
+                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                          errors.description ? 'border-red-300' : 'border-gray-300'
+                        }`}
                         placeholder="Descripción opcional del contacto"
                       />
+                      {errors.description && (
+                        <p className="mt-1 text-sm text-red-600">{errors.description}</p>
+                      )}
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Lista de Suscripción
+                        Estado
                       </label>
-                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                        <option value="">Selecciona una lista</option>
-                        <option value="1">Lista Principal</option>
-                        <option value="2">Newsletter</option>
-                        <option value="3">Promociones</option>
+                      <select 
+                        value={formData.status}
+                        onChange={(e) => setFormData('status', e.target.value)}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                      >
+                        <option value="active">Activo</option>
+                        <option value="inactive">Inactivo</option>
+                        <option value="archived">Archivado</option>
                       </select>
                     </div>
                     <div className="flex justify-end space-x-3">
                       <button
                         type="button"
+                        onClick={() => reset()}
                         className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
                       >
-                        Cancelar
+                        Limpiar
                       </button>
                       <button
                         type="submit"
-                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                        disabled={processing}
+                        className={`px-4 py-2 rounded-lg transition-colors ${
+                          processing 
+                            ? 'bg-gray-400 cursor-not-allowed' 
+                            : 'bg-orange-500 hover:bg-orange-600'
+                        } text-white`}
                       >
-                        Agregar Contacto
+                        {processing ? 'Agregando...' : 'Agregar Contacto'}
                       </button>
                     </div>
                   </form>
@@ -428,9 +586,12 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             subscriber.status === 'active' 
                               ? 'bg-green-100 text-green-800' 
-                              : 'bg-red-100 text-red-800'
+                              : subscriber.status === 'inactive'
+                              ? 'bg-red-100 text-red-800'
+                              : 'bg-gray-100 text-gray-800'
                           }`}>
-                            {subscriber.status === 'active' ? 'Activo' : 'Inactivo'}
+                            {subscriber.status === 'active' ? 'Activo' : 
+                             subscriber.status === 'inactive' ? 'Inactivo' : 'Archivado'}
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -441,14 +602,19 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end space-x-2">
-                            <button className="text-orange-600 hover:text-orange-900">
+                            <button 
+                              onClick={() => handleEdit(subscriber)}
+                              className="text-orange-600 hover:text-orange-900"
+                              title="Editar contacto"
+                            >
                               <Edit className="h-4 w-4" />
                             </button>
-                            <button className="text-red-600 hover:text-red-900">
+                            <button 
+                              onClick={() => handleDelete(subscriber.id)}
+                              className="text-red-600 hover:text-red-900"
+                              title="Eliminar contacto"
+                            >
                               <Trash2 className="h-4 w-4" />
-                            </button>
-                            <button className="text-gray-600 hover:text-gray-900">
-                              <MoreVertical className="h-4 w-4" />
                             </button>
                           </div>
                         </td>
@@ -474,6 +640,113 @@ export default function Contactos({ user, subscribers = [] }: ContactosProps) {
             </div>
           </div>
         </div>
+
+        {/* Modal de Edición */}
+        {editingSubscriber && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Editar Contacto</h3>
+              </div>
+              
+              <form onSubmit={handleEditSubmit} className="p-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nombre *
+                    </label>
+                    <input
+                      type="text"
+                      value={editData.name}
+                      onChange={(e) => setEditData('name', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        editErrors.name ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Ingresa el nombre completo"
+                      required
+                    />
+                    {editErrors.name && (
+                      <p className="mt-1 text-sm text-red-600">{editErrors.name}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email *
+                    </label>
+                    <input
+                      type="email"
+                      value={editData.email}
+                      onChange={(e) => setEditData('email', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        editErrors.email ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="correo@ejemplo.com"
+                      required
+                    />
+                    {editErrors.email && (
+                      <p className="mt-1 text-sm text-red-600">{editErrors.email}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Descripción
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editData.description}
+                      onChange={(e) => setEditData('description', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        editErrors.description ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Descripción opcional del contacto"
+                    />
+                    {editErrors.description && (
+                      <p className="mt-1 text-sm text-red-600">{editErrors.description}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Estado
+                    </label>
+                    <select 
+                      value={editData.status}
+                      onChange={(e) => setEditData('status', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="active">Activo</option>
+                      <option value="inactive">Inactivo</option>
+                      <option value="archived">Archivado</option>
+                    </select>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseEdit}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={editProcessing}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      editProcessing 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-orange-500 hover:bg-orange-600'
+                    } text-white`}
+                  >
+                    {editProcessing ? 'Guardando...' : 'Guardar Cambios'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </AppSidebar>
     </>
   )
