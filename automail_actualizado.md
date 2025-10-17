@@ -61,11 +61,16 @@ email_setup
 
 SMTP_config
   - user, password, host, port, protocole(insecure, ssl, tls) 
-  - email_setup_id "unique"  
+  - email_setup_id "unique"
+  - isActive  
+
 
 campaigns
   - id, tenant_id, user_id, domain_id, name, description
   - status (active/paused/completed), created_at, updated_at
+
+
+//relacion entre list-campaigns
 
 campaign_stages
   - id, tenant_id, campaign_id, stage_number, name
@@ -75,10 +80,18 @@ templates
   - id, tenant_id, stage_id, name, subject, body_markdown
   - available_variables, active, created_at, updated_at
 
-contacts
-  - id, tenant_id, campaign_id, name, email, description
+sucribers
+  - id, tenant_id, name, email, description
   - status (active/unsubscribed)
   - current_stage, last_sent_at, created_at, updated_at
+
+list
+  -id, 
+
+suscriber_lists
+  -id, suscriber_id, list_id
+  
+
 
 sendings
   - id, tenant_id, contact_id, template_id, sent_at

@@ -23,7 +23,7 @@ export default class extends BaseSchema {
       table.enum('protocole', ['insecure', 'ssl', 'tls']).notNullable()
       
       table.timestamps(true, true)
-      table.boolean('is_active').defaultTo(false)//por preguntar
+      table.boolean('is_active').defaultTo(false)
 
     })
   }
