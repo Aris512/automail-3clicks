@@ -32,6 +32,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const [searchTerm, setSearchTerm] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
 
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
@@ -65,7 +66,9 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     post('/subscribers', {
       onSuccess: () => {
         reset()
-        // El mensaje de éxito se mostrará automáticamente desde flash
+        setNotification({ type: 'success', message: '¡Contacto agregado correctamente!' })
+        // Limpiar la notificación después de 3 segundos
+        setTimeout(() => setNotification(null), 3000)
       },
       onError: (errors) => {
         console.error('Errores del formulario:', errors)
@@ -103,7 +106,9 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         onSuccess: (page) => {
           console.log('Edición exitosa:', page)
           handleCloseEdit()
-          // El mensaje de éxito se mostrará automáticamente desde flash
+          setNotification({ type: 'success', message: '¡Contacto actualizado correctamente!' })
+          // Limpiar la notificación después de 3 segundos
+          setTimeout(() => setNotification(null), 3000)
         },
         onError: (errors) => {
           console.error('Errores del formulario de edición:', errors)
@@ -120,18 +125,31 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     }
   }
 
+  // Función para mostrar confirmación de borrado
+  const handleDelete = (subscriber: Subscriber) => {
+    setShowDeleteConfirm({show: true, subscriber})
+  }
+
   // Función para confirmar borrado
-  const handleDelete = (subscriberId: number) => {
-    if (confirm('¿Estás seguro de que quieres eliminar este contacto?')) {
-      router.delete(`/subscribers/${subscriberId}`, {
+  const confirmDelete = () => {
+    if (showDeleteConfirm.subscriber) {
+      router.delete(`/subscribers/${showDeleteConfirm.subscriber.id}`, {
         onSuccess: () => {
-          // El mensaje de éxito se mostrará automáticamente desde flash
+          setShowDeleteConfirm({show: false, subscriber: null})
+          setNotification({ type: 'success', message: '¡Contacto eliminado correctamente!' })
+          // Limpiar la notificación después de 3 segundos
+          setTimeout(() => setNotification(null), 3000)
         },
         onError: (errors) => {
           console.error('Error al eliminar contacto:', errors)
         }
       })
     }
+  }
+
+  // Función para cancelar borrado
+  const cancelDelete = () => {
+    setShowDeleteConfirm({show: false, subscriber: null})
   }
 
   const filteredSubscribers = subscribers.filter(subscriber =>
@@ -530,9 +548,13 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                 </div>
               </div>
               
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto max-h-80 overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+                {/* Gradiente superior para indicar contenido arriba */}
+                <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-white to-transparent pointer-events-none z-20"></div>
+                {/* Gradiente inferior para indicar más contenido */}
+                <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-white to-transparent pointer-events-none z-20"></div>
                 <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+                  <thead className="bg-gray-50 sticky top-0 z-10">
                     <tr>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Contacto
@@ -610,7 +632,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                               <Edit className="h-4 w-4" />
                             </button>
                             <button 
-                              onClick={() => handleDelete(subscriber.id)}
+                              onClick={() => handleDelete(subscriber)}
                               className="text-red-600 hover:text-red-900"
                               title="Eliminar contacto"
                             >
@@ -744,6 +766,50 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación de borrado */}
+        {showDeleteConfirm.show && showDeleteConfirm.subscriber && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Confirmar Eliminación</h3>
+              </div>
+              
+              <div className="p-6">
+                <div className="flex items-center mb-4">
+                  <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mr-4">
+                    <Trash2 className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-medium">¿Estás seguro de que quieres eliminar este contacto?</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      <strong>{showDeleteConfirm.subscriber.name}</strong> - {showDeleteConfirm.subscriber.email}
+                    </p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-600 mb-6">
+                  Esta acción no se puede deshacer. El contacto será eliminado permanentemente.
+                </p>
+                
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={cancelDelete}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Eliminar Contacto
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
