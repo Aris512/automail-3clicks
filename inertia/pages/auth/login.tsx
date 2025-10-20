@@ -71,7 +71,7 @@ export default function Login() {
 
                 <Button 
                   type="submit" 
-                  className="w-full btn-gradient-hover active:scale-[0.98] animate-fade-in-delayed-3 text-white font-medium py-2.5 relative z-10" 
+                  className="w-full btn-gradient-hover bg-gradient-to-r from-red-500 to-red-600 active:scale-[0.98] animate-fade-in-delayed-3 text-white font-medium py-2.5 relative z-10" 
                   disabled={processing}
                 >
                   {processing ? 'Iniciando sesión...' : 'Iniciar Sesión'}

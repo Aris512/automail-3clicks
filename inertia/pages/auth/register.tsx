@@ -86,7 +86,7 @@ export default function Register() {
                     required
                     className="transition-all duration-200 focus:scale-[1.02] focus:shadow-md focus:border-red-300 focus:ring-red-200"
                   />
-                  <p className="text-xs text-red-500">Formato: usuario@dominio.com</p>
+                  <p className="text-xs text-gray-500">Formato: usuario@dominio.com</p>
                   {errors.email && <p className="text-sm text-red-600">{errors.email}</p>}
                 </div>
 
