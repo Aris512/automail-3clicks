@@ -22,6 +22,9 @@ export default class Subscriber extends BaseModel {
   declare description?: string
 
   @column()
+  declare company?: string
+
+  @column()
   declare status: 'active' | 'unsubscribed'
 
   @column.dateTime()

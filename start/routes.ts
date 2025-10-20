@@ -26,6 +26,9 @@ const SubscribersListsController = () => import('#controllers/subscribers_lists_
 const EmailsController = () => import('#controllers/emails_controller')
 router.post('/test-email', [EmailsController, 'sendEmail'])
 
+// Ruta pública para suscripción desde formularios externos (sin middleware de autenticación)
+router.post('/api/public/subscribe', [SubscribersController, 'publicSubscribe'])
+
 // Página principal 
 router.get('/', ({ response }: HttpContext) => {
    response.redirect('/login')

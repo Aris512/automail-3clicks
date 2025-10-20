@@ -3,6 +3,7 @@ import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
+import GenerateForm from '~/components/GenerateForm'
 import { Users, Plus, Upload, FileText, Search, Edit, Trash2, Mail, Calendar } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
@@ -73,6 +74,10 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       return
     }
     post('/subscribers', {
+      preserveScroll: true,
+      preserveState: true,
+      only: ['subscribers'],
+      replace: true,
       onSuccess: () => {
         reset()
         setNotification({ type: 'success', message: '¡Contacto agregado correctamente!' })
@@ -117,6 +122,10 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       }
       // Usar router.put directamente en lugar de put del useForm
       router.put(`/subscribers/${editingSubscriber.id}`, editData, {
+        preserveScroll: true,
+        preserveState: true,
+        only: ['subscribers'],
+        replace: true,
         onSuccess: (page) => {
           console.log('Edición exitosa:', page)
           handleCloseEdit()
@@ -148,6 +157,10 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const confirmDelete = () => {
     if (showDeleteConfirm.subscriber) {
       router.delete(`/subscribers/${showDeleteConfirm.subscriber.id}`, {
+        preserveScroll: true,
+        preserveState: true,
+        only: ['subscribers'],
+        replace: true,
         onSuccess: () => {
           setShowDeleteConfirm({show: false, subscriber: null})
           setNotification({ type: 'success', message: '¡Contacto eliminado correctamente!' })
@@ -361,110 +374,21 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
 
             {/* Form Tab */}
             {activeTab === 'form' && (
-              <div className="space-y-6">
-                <div className="bg-white rounded-lg shadow-sm border p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Configurar Formulario de Suscripción</h3>
-                  <div className="space-y-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Nombre del Formulario
-                      </label>
-                      <input
-                        type="text"
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        placeholder="Formulario de Newsletter"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Descripción
-                      </label>
-                      <textarea
-                        rows={3}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        placeholder="Describe el propósito de este formulario..."
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Campos del Formulario
-                      </label>
-                      <div className="space-y-3">
-                        <div className="flex items-center space-x-3">
-                          <input type="checkbox" defaultChecked className="rounded" />
-                          <span className="text-sm text-gray-700">Email (obligatorio)</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <input type="checkbox" defaultChecked className="rounded" />
-                          <span className="text-sm text-gray-700">Nombre</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <input type="checkbox" className="rounded" />
-                          <span className="text-sm text-gray-700">Descripción</span>
-                        </div>
-                        <div className="flex items-center space-x-3">
-                          <input type="checkbox" className="rounded" />
-                          <span className="text-sm text-gray-700">Empresa</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Lista de Destino
-                      </label>
-                      <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                        <option value="">Selecciona una lista</option>
-                        <option value="1">Lista Principal</option>
-                        <option value="2">Newsletter</option>
-                        <option value="3">Promociones</option>
-                      </select>
-                    </div>
-                    <div className="flex justify-end space-x-3">
-                      <button
-                        type="button"
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                      >
-                        Cancelar
-                      </button>
-                      <button
-                        type="button"
-                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
-                      >
-                        Generar Código HTML
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Preview */}
-                <div className="bg-white rounded-lg shadow-sm border p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Vista Previa del Formulario</h3>
-                  <div className="border border-gray-200 rounded-lg p-6 bg-gray-50">
-                    <div className="max-w-md mx-auto">
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">Suscríbete a nuestro Newsletter</h4>
-                      <p className="text-sm text-gray-600 mb-4">Recibe las últimas noticias y actualizaciones</p>
-                      <form className="space-y-3">
-                        <input
-                          type="email"
-                          placeholder="Tu email"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        />
-                        <input
-                          type="text"
-                          placeholder="Tu nombre completo"
-                          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                        />
-                        <button
-                          type="submit"
-                          className="w-full bg-orange-500 text-white py-2 rounded-lg hover:bg-orange-600 transition-colors"
-                        >
-                          Suscribirse
-                        </button>
-                      </form>
-                    </div>
-                  </div>
-                </div>
-              </div>
+              <GenerateForm 
+                onSubmit={(formData) => {
+                  console.log('Datos del formulario:', formData)
+                  setNotification({ type: 'success', message: '¡Formulario configurado correctamente!' })
+                  setTimeout(() => setNotification(null), 3000)
+                }}
+                onPreview={(formData) => {
+                  console.log('Vista previa:', formData)
+                }}
+                onGenerateCode={(formData) => {
+                  console.log('Generar código:', formData)
+                  setNotification({ type: 'success', message: '¡Código HTML generado exitosamente!' })
+                  setTimeout(() => setNotification(null), 3000)
+                }}
+              />
             )}
 
             {/* Import Tab */}

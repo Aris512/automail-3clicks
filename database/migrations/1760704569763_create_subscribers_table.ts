@@ -18,6 +18,7 @@ export default class extends BaseSchema {
       table.string('email').notNullable()
       table.text('description').nullable()
       table.enum('status', ['active', 'inactive', 'archived']).notNullable().defaultTo('active')
+      table.string('company').nullable()
       table.string('current_stage').nullable()
       table.timestamp('last_sent_at').nullable()
 
