@@ -1,6 +1,9 @@
 import { Head, useForm, router } from '@inertiajs/react'
+import { validateEmail } from '../../lib/validations'
+import { useToast } from '~/hooks/useToast'
+import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, FileText, Search, Filter, Edit, Trash2, Mail, Calendar } from 'lucide-react'
+import { Users, Plus, Upload, FileText, Search, Edit, Trash2, Mail, Calendar } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 interface User {
@@ -28,6 +31,7 @@ interface ContactosProps {
 }
 
 export default function Contactos({ user, subscribers = [], flash }: ContactosProps) {
+  const { toasts, showError, removeToast } = useToast()
   const [activeTab, setActiveTab] = useState<'manual' | 'form' | 'import'>('manual')
   const [searchTerm, setSearchTerm] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
@@ -63,6 +67,11 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
+    const emailValidation = validateEmail(formData.email)
+    if (!emailValidation.isValid) {
+      showError('Correo inválido', 'El correo tiene un mal formato')
+      return
+    }
     post('/subscribers', {
       onSuccess: () => {
         reset()
@@ -101,6 +110,11 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     console.log('ID del contacto:', editingSubscriber?.id)
     
     if (editingSubscriber) {
+      const emailValidation = validateEmail(editData.email)
+      if (!emailValidation.isValid) {
+        showError('Correo inválido', 'El correo tiene un mal formato')
+        return
+      }
       // Usar router.put directamente en lugar de put del useForm
       router.put(`/subscribers/${editingSubscriber.id}`, editData, {
         onSuccess: (page) => {
@@ -163,6 +177,8 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       <Head title="Contactos" />
       
       <AppSidebar user={user} pageTitle="Contactos">
+        {/* Toasts */}
+        <ToastContainer toasts={toasts} onClose={removeToast} />
         {/* Notificación */}
         {notification && (
           <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
@@ -285,9 +301,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                         placeholder="correo@ejemplo.com"
                         required
                       />
-                      {errors.email && (
-                        <p className="mt-1 text-sm text-red-600">{errors.email}</p>
-                      )}
+                      
                     </div>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -541,9 +555,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                         className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
                       />
                     </div>
-                    <button className="p-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-                      <Filter className="h-4 w-4 text-gray-600" />
-                    </button>
                   </div>
                 </div>
               </div>
@@ -651,12 +662,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                   <Users className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <h3 className="text-lg font-medium text-gray-900 mb-2">No hay contactos</h3>
                   <p className="text-gray-600 mb-4">Comienza agregando contactos manualmente o importando desde un archivo CSV.</p>
-                  <button
-                    onClick={() => setActiveTab('manual')}
-                    className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
-                  >
-                    Agregar Primer Contacto
-                  </button>
                 </div>
               )}
             </div>
@@ -706,9 +711,8 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                       placeholder="correo@ejemplo.com"
                       required
                     />
-                    {editErrors.email && (
-                      <p className="mt-1 text-sm text-red-600">{editErrors.email}</p>
-                    )}
+                    <p className="text-xs text-gray-500">Formato: usuario@dominio.com</p>
+                      
                   </div>
                   
                   <div>

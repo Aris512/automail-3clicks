@@ -1,9 +1,11 @@
+// Regex reutilizable y case-insensitive para validar formato de email
+export const emailRegex = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i
+
 export function validateEmail(email: string): { isValid: boolean; message?: string } {
   if (!email) {
     return { isValid: false, message: 'El email es requerido' }
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) {
     return { isValid: false, message: 'El formato del email no es válido' }
   }
@@ -38,7 +40,6 @@ export function validateEmailForLogin(email: string): { isValid: boolean; messag
     return { isValid: false, message: 'El email es requerido' }
   }
 
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   if (!emailRegex.test(email)) {
     return { isValid: false, message: 'El formato del email no es válido' }
   }

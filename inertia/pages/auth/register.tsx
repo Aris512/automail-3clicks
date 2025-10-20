@@ -1,10 +1,13 @@
 import { Head, useForm } from '@inertiajs/react'
+import { validateEmail } from '../../lib/validations'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../../components/ui/card'
 import { Button } from '../../components/ui/button'
 import { Input } from '../../components/ui/input'
 import { Label } from '../../components/ui/label'
 import PasswordStrength from '../../components/ui/password-strength'
 import { FormEventHandler } from 'react'
+import ToastContainer from '../../components/ui/toast-container'
+import { useToast } from '../../hooks/useToast'
 
 export default function Register() {
   const { data, setData, post, processing, errors } = useForm({
@@ -15,15 +18,23 @@ export default function Register() {
     last_name: '',
   })
 
+  const { toasts, showError, removeToast } = useToast()
+
 
   const handleSubmit: FormEventHandler = (e) => {
     e.preventDefault()
+    const emailValidation = validateEmail(data.email)
+    if (!emailValidation.isValid) {
+      showError('Correo inválido', 'El correo tiene un mal formato')
+      return
+    }
     post('/register')
   }
 
   return (
     <>
       <Head title="Registrarse" />
+      <ToastContainer toasts={toasts} onClose={removeToast} />
       
       <div className="min-h-screen flex items-center justify-center bg-white py-12 px-4 sm:px-6 lg:px-8">
         <div className="max-w-md w-full space-y-8">
@@ -82,7 +93,9 @@ export default function Register() {
                     type="email"
                     placeholder="tu@email.com"
                     value={data.email}
-                    onChange={(e) => setData('email', e.target.value)}
+                    onChange={(e) => {
+                      setData('email', e.target.value)
+                    }}
                     required
                     className="transition-all duration-200 focus:scale-[1.02] focus:shadow-md focus:border-red-300 focus:ring-red-200"
                   />

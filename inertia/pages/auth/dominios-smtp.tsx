@@ -11,6 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
+import { validateEmail } from '~/lib/validations'
 
 interface User {
   id: number
@@ -301,6 +302,12 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   const handleSaveSmtpConfig = async () => {
     if (!smtpConfig.host || !smtpConfig.username) {
       showError(" Campos Requeridos", "Por favor completa el servidor SMTP, usuario y contraseña")
+      return
+    }
+
+    // Validación de formato de email remitente
+    if (smtpConfig.fromEmail && !validateEmail(smtpConfig.fromEmail).isValid) {
+      showError('Correo inválido', 'El correo tiene un mal formato')
       return
     }
 
