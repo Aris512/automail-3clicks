@@ -229,21 +229,7 @@ export default class SubscribersController {
     }
   }
 
-  /**
-   * Importar contactos desde CSV
-   */
-  async import({ response }: HttpContext) {
-    // TODO: Implement CSV import functionality
-    return response.json({ message: 'Import functionality will be implemented' })
-  }
 
-  /**
-   * Exportar contactos a CSV
-   */
-  async export({ response }: HttpContext) {
-    // TODO: Implement CSV export functionality
-    return response.json({ message: 'Export functionality will be implemented' })
-  }
 
   /**
    * Handle public subscription from external forms

@@ -518,18 +518,20 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                     <button
                       onClick={refreshSubscribers}
                       disabled={isRefreshing}
-                      className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+                      aria-label="Actualizar"
+                      title="Actualizar"
+                      className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-300 ${
                         isRefreshing 
-                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
-                          : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed animate-pulse' 
+                          : 'bg-orange-100 text-orange-600 hover:bg-orange-200 hover:scale-105'
                       }`}
-                      title="Actualizar lista de contactos"
                     >
-                      <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                      <span className="text-sm font-medium">
-                        {isRefreshing ? 'Actualizando...' : 'Actualizar'}
-                      </span>
+                        <RefreshCw 
+                          className={`h-4 w-4 ${isRefreshing ? 'animate-spin-slow' : ''}`} 
+                          style={isRefreshing ? { animation: 'spin 1s linear infinite' } : {}} />
                     </button>
+
+
                     <div className="relative">
                       <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                       <input
