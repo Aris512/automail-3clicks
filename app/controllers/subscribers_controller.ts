@@ -548,12 +548,51 @@ export default class SubscribersController {
   /**
    * Handle public subscription from external forms
    */
-  async publicIndex({ request, response }: HttpContext) {
+  async publicIndex({ request, response, auth }: HttpContext) {
     try {
       // Configurar headers CORS
       response.header('Access-Control-Allow-Origin', '*')
       response.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
       response.header('Access-Control-Allow-Headers', 'Content-Type')
+      
+      console.log('🔄 [PUBLIC_INDEX] Iniciando consulta de contactos')
+      
+      // Si el usuario está autenticado, filtrar por su tenant
+      if (auth.user) {
+        console.log(`👤 [PUBLIC_INDEX] Usuario autenticado: ${auth.user.email} (ID: ${auth.user.id})`)
+        
+        // Obtener el tenant del usuario autenticado
+        const tenantUser = await TenantUser.query()
+          .where('userId', auth.user.id)
+          .where('active', true)
+          .first()
+
+        if (!tenantUser) {
+          console.log('❌ [PUBLIC_INDEX] Usuario no tiene acceso a ningún tenant activo')
+          return response.status(400).json({
+            success: false,
+            message: 'Usuario no tiene acceso a ningún tenant activo'
+          })
+        }
+
+        console.log(`🏢 [PUBLIC_INDEX] Tenant encontrado: ID ${tenantUser.tenantId}`)
+
+        // Obtener solo los subscribers del tenant del usuario autenticado
+        const subscribers = await Subscriber.query()
+          .where('tenantId', tenantUser.tenantId)
+          .orderBy('createdAt', 'desc')
+          .select(['id', 'name', 'email', 'description', 'status', 'createdAt'])
+
+        console.log(`📋 [PUBLIC_INDEX] Contactos encontrados para tenant ${tenantUser.tenantId}: ${subscribers.length}`)
+
+        return response.json({
+          success: true,
+          data: subscribers
+        })
+      }
+      
+      // Si no está autenticado, usar el comportamiento original
+      console.log('👤 [PUBLIC_INDEX] Usuario no autenticado, usando comportamiento público')
       
       // Obtener tenantId opcional de query params
       const tenantId = request.qs().tenantId
@@ -562,6 +601,7 @@ export default class SubscribersController {
       
       // Si se especifica tenantId, filtrar por ese tenant
       if (tenantId) {
+        console.log(`🏢 [PUBLIC_INDEX] Filtrando por tenantId: ${tenantId}`)
         query = query.where('tenantId', tenantId)
       }
       
@@ -570,12 +610,14 @@ export default class SubscribersController {
         .orderBy('createdAt', 'desc')
         .select(['id', 'name', 'email', 'description', 'status', 'createdAt'])
       
+      console.log(`📋 [PUBLIC_INDEX] Contactos encontrados (público): ${subscribers.length}`)
+      
       return response.json({
         success: true,
         data: subscribers
       })
     } catch (error) {
-      console.error('Error en publicIndex:', error)
+      console.error('💥 [PUBLIC_INDEX] Error al obtener contactos:', error)
       return response.status(500).json({
         success: false,
         message: 'Error al obtener la lista de contactos'
