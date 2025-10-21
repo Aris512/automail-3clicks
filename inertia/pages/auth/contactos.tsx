@@ -47,6 +47,22 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const [dragActive, setDragActive] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Estados para agregar contactos manualmente
+  const [manualContacts, setManualContacts] = useState<Array<{
+    id: string
+    name: string
+    email: string
+    description: string
+    status: 'active' | 'inactive' | 'archived'
+  }>>([{
+    id: '1',
+    name: '',
+    email: '',
+    description: '',
+    status: 'active'
+  }])
+  const [isSavingManual, setIsSavingManual] = useState(false)
+
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
     if (flash?.success) {
@@ -80,15 +96,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     }
   }
 
-  // Formulario para agregar contacto manualmente
-  const { data: formData, setData: setFormData, processing, errors, reset } = useForm({
-    name: '',
-    email: '',
-    description: '',
-    listId: '',
-    status: 'active'
-  })
-
   // Formulario para editar contacto
   const { data: editData, setData: setEditData, processing: editProcessing, errors: editErrors, reset: resetEdit } = useForm({
     name: '',
@@ -96,55 +103,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     description: '',
     status: 'active'
   })
-
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    const emailValidation = validateEmail(formData.email)
-    if (!emailValidation.isValid) {
-      showError('Correo inválido', 'El correo tiene un mal formato')
-      return
-    }
-    
-    // Crear contacto usando fetch API
-    fetch('/subscribers', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-      },
-      body: JSON.stringify(formData)
-    })
-    .then(response => response.json())
-    .then(result => {
-      if (result.success) {
-        reset()
-        
-        // Agregar el nuevo contacto a currentSubscribers
-        const newSubscriber: Subscriber = {
-          id: result.data.id,
-          name: formData.name,
-          email: formData.email,
-          description: formData.description,
-          status: formData.status as 'active' | 'inactive' | 'archived',
-          createdAt: result.data.createdAt || new Date().toISOString()
-        }
-        
-        setCurrentSubscribers(prevSubscribers => [newSubscriber, ...prevSubscribers])
-        
-        setNotification({ type: 'success', message: '¡Contacto agregado correctamente!' })
-        setTimeout(() => setNotification(null), 3000)
-      } else {
-        setNotification({ type: 'error', message: result.message || 'Error al agregar contacto' })
-        setTimeout(() => setNotification(null), 10000)
-      }
-    })
-    .catch(error => {
-      console.error('Error al crear contacto:', error)
-      setNotification({ type: 'error', message: 'Error de conexión al crear contacto' })
-      setTimeout(() => setNotification(null), 10000)
-    })
-  }
 
   // Función para abrir modal de edición
   const handleEdit = (subscriber: Subscriber) => {
@@ -412,6 +370,139 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     }
   }
 
+  // Funciones para manejo de contactos manuales
+  const addManualContact = () => {
+    const newId = (manualContacts.length + 1).toString()
+    setManualContacts([...manualContacts, {
+      id: newId,
+      name: '',
+      email: '',
+      description: '',
+      status: 'active'
+    }])
+  }
+
+  const removeManualContact = (id: string) => {
+    if (manualContacts.length > 1) {
+      setManualContacts(manualContacts.filter(contact => contact.id !== id))
+    }
+  }
+
+  const updateManualContact = (id: string, field: string, value: string) => {
+    setManualContacts(manualContacts.map(contact => 
+      contact.id === id ? { ...contact, [field]: value } : contact
+    ))
+  }
+
+  const clearManualContacts = () => {
+    setManualContacts([{
+      id: '1',
+      name: '',
+      email: '',
+      description: '',
+      status: 'active'
+    }])
+  }
+
+  const handleManualSubmit = async () => {
+    // Validar que todos los contactos tengan email
+    const validContacts = manualContacts.filter(contact => 
+      contact.email.trim() && contact.name.trim()
+    )
+
+    if (validContacts.length === 0) {
+      setNotification({ 
+        type: 'error', 
+        message: 'Por favor completa al menos un contacto con nombre y email' 
+      })
+      setTimeout(() => setNotification(null), 10000)
+      return
+    }
+
+    // Validar emails
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    const invalidEmails = validContacts.filter(contact => !emailRegex.test(contact.email))
+    
+    if (invalidEmails.length > 0) {
+      setNotification({ 
+        type: 'error', 
+        message: `Se encontraron ${invalidEmails.length} emails con formato inválido: ${invalidEmails.map(c => c.email).join(', ')}` 
+      })
+      setTimeout(() => setNotification(null), 10000)
+      return
+    }
+
+    setIsSavingManual(true)
+
+    try {
+      const response = await fetch('/subscribers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify({ contacts: validContacts })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Construir mensaje detallado basado en la respuesta
+        let successMessage = result.message
+        
+        // Si hay emails omitidos, mostrar información adicional
+        if (result.skipped > 0) {
+          successMessage += `\n\nEmails omitidos (${result.skipped}): ${result.skippedEmails.join(', ')}`
+        }
+        
+        // Si hay emails importados, mostrarlos también
+        if (result.importedEmails && result.importedEmails.length > 0) {
+          successMessage += `\n\nEmails agregados (${result.imported}): ${result.importedEmails.join(', ')}`
+        }
+        
+        setNotification({ 
+          type: 'success', 
+          message: successMessage
+        })
+        
+        // Limpiar formulario
+        clearManualContacts()
+        
+        // Actualizar la lista de contactos
+        await refreshSubscribers()
+        
+        // Mensajes de éxito duran más tiempo cuando hay información detallada
+        const timeoutDuration = result.skipped > 0 ? 15000 : 5000
+        setTimeout(() => setNotification(null), timeoutDuration)
+      } else {
+        // Manejar errores específicos de duplicados
+        let errorMessage = result.message || 'Error al agregar contactos'
+        
+        // Si hay información específica de emails duplicados, mostrarla
+        if (result.duplicateEmail) {
+          errorMessage = `${result.duplicateEmail} ya está en la lista de contactos`
+        } else if (result.duplicateEmails && result.duplicateEmails.length > 0) {
+          errorMessage = `Los siguientes emails ya están en la lista de contactos: ${result.duplicateEmails.join(', ')}`
+        }
+        
+        setNotification({ 
+          type: 'error', 
+          message: errorMessage
+        })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    } catch (error) {
+      console.error('Error al agregar contactos:', error)
+      setNotification({ 
+        type: 'error', 
+        message: 'Error de conexión al agregar contactos' 
+      })
+      setTimeout(() => setNotification(null), 10000)
+    } finally {
+      setIsSavingManual(false)
+    }
+  }
+
   const filteredSubscribers = currentSubscribers.filter(subscriber =>
     subscriber.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     subscriber.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -504,94 +595,135 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
             {activeTab === 'manual' && (
               <div className="space-y-6">
                 <div className="bg-white rounded-lg shadow-sm border p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Agregar Contacto Manualmente</h3>
-                  <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Nombre *
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData('name', e.target.value)}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
-                          errors.name ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                        placeholder="Ingresa el nombre completo"
-                        required
-                      />
-                      {errors.name && (
-                        <p className="mt-1 text-sm text-red-600">{errors.name}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Email *
-                      </label>
-                      <input
-                        type="email"
-                        value={formData.email}
-                        onChange={(e) => setFormData('email', e.target.value)}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
-                          errors.email ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                        placeholder="correo@ejemplo.com"
-                        required
-                      />
-                      
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Descripción
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={formData.description}
-                        onChange={(e) => setFormData('description', e.target.value)}
-                        className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
-                          errors.description ? 'border-red-300' : 'border-gray-300'
-                        }`}
-                        placeholder="Descripción opcional del contacto"
-                      />
-                      {errors.description && (
-                        <p className="mt-1 text-sm text-red-600">{errors.description}</p>
-                      )}
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2">
-                        Estado
-                      </label>
-                      <select 
-                        value={formData.status}
-                        onChange={(e) => setFormData('status', e.target.value)}
-                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                      >
-                        <option value="active">Activo</option>
-                        <option value="inactive">Inactivo</option>
-                        <option value="archived">Archivado</option>
-                      </select>
-                    </div>
-                    <div className="flex justify-end space-x-3">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Agregar Contactos Manualmente</h3>
+                    <div className="flex space-x-2">
                       <button
-                        type="button"
-                        onClick={() => reset()}
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                        onClick={addManualContact}
+                        className="px-3 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors text-sm"
                       >
-                        Limpiar
+                        <Plus className="h-4 w-4 inline mr-1" />
+                        Agregar Fila
                       </button>
                       <button
-                        type="submit"
-                        disabled={processing}
-                        className={`px-4 py-2 rounded-lg transition-colors ${
-                          processing 
-                            ? 'bg-gray-400 cursor-not-allowed' 
-                            : 'bg-orange-500 hover:bg-orange-600'
-                        } text-white`}
+                        onClick={clearManualContacts}
+                        className="px-3 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors text-sm"
                       >
-                        {processing ? 'Agregando...' : 'Agregar Contacto'}
+                        Limpiar Todo
                       </button>
                     </div>
-                  </form>
+                  </div>
+
+                  {/* Tabla de contactos */}
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Nombre *
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Email *
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Descripción
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Estado
+                          </th>
+                          <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Acciones
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {manualContacts.map((contact) => (
+                          <tr key={contact.id} className="hover:bg-gray-50">
+                            <td className="px-3 py-3">
+                              <input
+                                type="text"
+                                value={contact.name}
+                                onChange={(e) => updateManualContact(contact.id, 'name', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                                placeholder="Nombre completo"
+                              />
+                            </td>
+                            <td className="px-3 py-3">
+                              <input
+                                type="email"
+                                value={contact.email}
+                                onChange={(e) => updateManualContact(contact.id, 'email', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                                placeholder="correo@ejemplo.com"
+                              />
+                            </td>
+                            <td className="px-3 py-3">
+                              <input
+                                type="text"
+                                value={contact.description}
+                                onChange={(e) => updateManualContact(contact.id, 'description', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                                placeholder="Descripción opcional"
+                              />
+                            </td>
+                            <td className="px-3 py-3">
+                              <select
+                                value={contact.status}
+                                onChange={(e) => updateManualContact(contact.id, 'status', e.target.value)}
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                              >
+                                <option value="active">Activo</option>
+                                <option value="inactive">Inactivo</option>
+                                <option value="archived">Archivado</option>
+                              </select>
+                            </td>
+                            <td className="px-3 py-3 text-center">
+                              <button
+                                onClick={() => removeManualContact(contact.id)}
+                                disabled={manualContacts.length === 1}
+                                className={`text-red-600 hover:text-red-800 ${
+                                  manualContacts.length === 1 ? 'opacity-50 cursor-not-allowed' : ''
+                                }`}
+                                title={manualContacts.length === 1 ? 'Debe haber al menos una fila' : 'Eliminar fila'}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Botones de acción */}
+                  <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                    <button
+                      onClick={clearManualContacts}
+                      disabled={isSavingManual}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                      Limpiar Todo
+                    </button>
+                    <button
+                      onClick={handleManualSubmit}
+                      disabled={isSavingManual}
+                      className={`px-4 py-2 rounded-lg transition-colors ${
+                        isSavingManual 
+                          ? 'bg-gray-400 cursor-not-allowed' 
+                          : 'bg-orange-500 hover:bg-orange-600'
+                      } text-white`}
+                    >
+                      {isSavingManual ? 'Guardando...' : `Agregar ${manualContacts.filter(c => c.name.trim() && c.email.trim()).length} Contactos`}
+                    </button>
+                  </div>
+
+                  {/* Información adicional */}
+                  <div className="mt-4 text-xs text-gray-500">
+                    <p>• Los campos marcados con * son obligatorios</p>
+                    <p>• Puedes agregar múltiples filas usando el botón "Agregar Fila"</p>
+                    <p>• Se validarán los emails antes de guardar</p>
+                    <p>• Los emails duplicados se omitirán automáticamente</p>
+                  </div>
                 </div>
               </div>
             )}

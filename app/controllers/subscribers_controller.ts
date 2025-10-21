@@ -43,10 +43,13 @@ export default class SubscribersController {
 
 
   /**
-   * Crear un nuevo contacto
+   * Crear uno o múltiples contactos
    */
   async store({ request, response, auth }: HttpContext) {
+    console.log('🚀 [STORE] Iniciando creación de contacto(s)')
+    
     const user = auth.user!
+    console.log(`👤 [STORE] Usuario autenticado: ${user.email} (ID: ${user.id})`)
     
     // Obtener el tenant del usuario
     const tenantUser = await TenantUser.query()
@@ -55,64 +58,201 @@ export default class SubscribersController {
       .first()
 
     if (!tenantUser) {
+      console.log('❌ [STORE] Usuario no tiene acceso a ningún tenant activo')
       return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
     }
 
-    // Validar datos
-    const data = request.only(['name', 'email', 'description', 'status'])
-    
-    // Validaciones básicas
-    if (!data.name || !data.email) {
-      return response.status(400).json({
-        success: false,
-        message: 'El nombre y email son requeridos'
-      })
-    }
-
-    // Validar que el status sea uno de los valores permitidos
-    const allowedStatuses = ['active', 'inactive', 'archived']
-    if (data.status && !allowedStatuses.includes(data.status)) {
-      return response.status(400).json({
-        success: false,
-        message: 'El estado debe ser: activo, inactivo o archivado'
-      })
-    }
-
-    // Verificar si el email ya existe en este tenant
-    const existingSubscriber = await Subscriber.query()
-      .where('email', data.email)
-      .where('tenantId', tenantUser.tenantId)
-      .first()
-
-    if (existingSubscriber) {
-      return response.status(409).json({
-        success: false,
-        message: 'Ya existe un contacto con este email'
-      })
-    }
+    console.log(`🏢 [STORE] Tenant encontrado: ID ${tenantUser.tenantId}`)
 
     try {
-      const subscriber = await Subscriber.create({
-        name: data.name,
-        email: data.email,
-        description: data.description || null,
-        status: data.status || 'active',
-        tenantId: tenantUser.tenantId
-      })
+      // Detectar si es un solo contacto o múltiples contactos
+      const requestData = request.all()
+      console.log('📋 [STORE] Datos recibidos:', Object.keys(requestData))
+      
+      let contacts: Array<{name: string, email: string, description?: string, status?: string}> = []
+      
+      // Si viene un array de contactos (múltiples)
+      if (requestData.contacts && Array.isArray(requestData.contacts)) {
+        console.log(`📋 [STORE] Modo múltiple: ${requestData.contacts.length} contactos`)
+        contacts = requestData.contacts
+      } 
+      // Si viene un solo contacto (modo individual)
+      else if (requestData.name && requestData.email) {
+        console.log('📋 [STORE] Modo individual: 1 contacto')
+        contacts = [{
+          name: requestData.name,
+          email: requestData.email,
+          description: requestData.description,
+          status: requestData.status
+        }]
+      }
+      else {
+        console.log('❌ [STORE] No se proporcionaron datos válidos')
+        return response.status(400).json({
+          success: false,
+          message: 'No se proporcionaron datos válidos'
+        })
+      }
+
+      console.log(`📋 [STORE] Contactos a procesar: ${contacts.length}`)
+
+      // Validar que todos los contactos tengan email y nombre
+      const validContacts = contacts.filter(contact => 
+        contact.email && contact.email.trim() && 
+        contact.name && contact.name.trim()
+      )
+
+      if (validContacts.length === 0) {
+        console.log('❌ [STORE] No hay contactos válidos')
+        return response.status(400).json({
+          success: false,
+          message: 'Todos los contactos deben tener nombre y email'
+        })
+      }
+
+      console.log(`✅ [STORE] Contactos válidos: ${validContacts.length}`)
+
+      // Validar formato de emails
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      const invalidEmails = validContacts.filter(contact => !emailRegex.test(contact.email))
+      
+      if (invalidEmails.length > 0) {
+        console.log(`❌ [STORE] Emails con formato inválido: ${invalidEmails.length}`)
+        return response.status(400).json({
+          success: false,
+          message: `Se encontraron ${invalidEmails.length} emails con formato inválido`,
+          invalidEmails: invalidEmails.map(contact => contact.email)
+        })
+      }
+
+      console.log('✅ [STORE] Todos los emails tienen formato válido')
+
+      // Verificar emails duplicados en la solicitud
+      const emailSet = new Set()
+      const duplicateEmails = []
+      for (const contact of validContacts) {
+        if (emailSet.has(contact.email)) {
+          duplicateEmails.push(contact.email)
+        } else {
+          emailSet.add(contact.email)
+        }
+      }
+
+      if (duplicateEmails.length > 0) {
+        console.log(`❌ [STORE] Emails duplicados en solicitud: ${duplicateEmails.join(', ')}`)
+        return response.status(400).json({
+          success: false,
+          message: `Se encontraron emails duplicados en la solicitud: ${duplicateEmails.join(', ')}`
+        })
+      }
+
+      console.log('✅ [STORE] No hay duplicados en la solicitud')
+
+      // Verificar emails que ya existen en la base de datos
+      console.log('🔍 [STORE] Verificando emails existentes en la base de datos...')
+      const existingEmails = await Subscriber.query()
+        .where('tenantId', tenantUser.tenantId)
+        .whereIn('email', validContacts.map(contact => contact.email))
+        .select('email')
+
+      const existingEmailList = existingEmails.map(sub => sub.email)
+      console.log(`📋 [STORE] Emails existentes encontrados: ${existingEmailList.length}`)
+      
+      if (existingEmailList.length > 0) {
+        console.log(`⚠️ [STORE] Emails ya existentes en BD: ${existingEmailList.join(', ')}`)
+      }
+
+      // Filtrar solo los emails nuevos
+      const newContacts = validContacts.filter(contact => !existingEmailList.includes(contact.email))
+      const duplicateContacts = validContacts.filter(contact => existingEmailList.includes(contact.email))
+      
+      console.log(`🆕 [STORE] Contactos nuevos para insertar: ${newContacts.length}`)
+      console.log(`⚠️ [STORE] Contactos duplicados encontrados: ${duplicateContacts.length}`)
+      
+      // Si hay emails duplicados, devolver error específico
+      if (duplicateContacts.length > 0) {
+        const duplicateEmails = duplicateContacts.map(contact => contact.email)
+        console.log(`❌ [STORE] Emails duplicados: ${duplicateEmails.join(', ')}`)
+        
+        // Si es un solo contacto duplicado, mensaje específico
+        if (duplicateContacts.length === 1) {
+          return response.status(409).json({
+            success: false,
+            message: `${duplicateContacts[0].email} ya está en la lista de contactos`,
+            duplicateEmail: duplicateContacts[0].email
+          })
+        }
+        
+        // Si son múltiples contactos duplicados
+        return response.status(409).json({
+          success: false,
+          message: `Los siguientes emails ya están en la lista de contactos: ${duplicateEmails.join(', ')}`,
+          duplicateEmails: duplicateEmails
+        })
+      }
+      
+      if (newContacts.length === 0) {
+        console.log('ℹ️ [STORE] Todos los emails ya existen en la base de datos')
+        return response.status(200).json({
+          success: true,
+          message: `Todos los emails ya existen en la base de datos. No se agregaron nuevos contactos.`,
+          imported: 0,
+          skipped: validContacts.length,
+          skippedEmails: existingEmailList
+        })
+      }
+
+      // Insertar los nuevos contactos
+      console.log('💾 [STORE] Preparando datos para inserción...')
+      const contactsToInsert = newContacts.map(contact => ({
+        email: contact.email.trim(),
+        name: contact.name.trim(),
+        description: contact.description?.trim() || '',
+        tenantId: tenantUser.tenantId,
+        status: (contact.status as 'active' | 'inactive' | 'archived') || 'active'
+      }))
+
+      console.log(`💾 [STORE] Insertando ${contactsToInsert.length} contactos en la base de datos...`)
+      const createdSubscribers = await Subscriber.createMany(contactsToInsert)
+
+      console.log(`✅ [STORE] Inserción completada exitosamente: ${newContacts.length} contactos nuevos`)
+
+      // Preparar respuesta
+      const responseMessage = existingEmailList.length > 0 
+        ? `Se agregaron ${newContacts.length} contactos nuevos. Se omitieron ${existingEmailList.length} emails que ya existían.`
+        : `Se agregaron exitosamente ${newContacts.length} contactos nuevos.`
+
+      // Si es un solo contacto, devolver el formato original para compatibilidad
+      if (contacts.length === 1 && newContacts.length === 1) {
+        return response.status(201).json({
+          success: true,
+          message: responseMessage,
+          data: createdSubscribers[0],
+          imported: newContacts.length,
+          skipped: existingEmailList.length,
+          skippedEmails: existingEmailList
+        })
+      }
 
       return response.status(201).json({
         success: true,
-        message: 'Contacto agregado exitosamente',
-        data: subscriber
+        message: responseMessage,
+        imported: newContacts.length,
+        skipped: existingEmailList.length,
+        skippedEmails: existingEmailList,
+        importedEmails: newContacts.map(contact => contact.email),
+        data: createdSubscribers
       })
+
     } catch (error) {
-      console.error('Error al crear contacto:', error)
+      console.error('💥 [STORE] Error durante la creación:', error)
+      console.error('💥 [STORE] Stack trace:', error.stack)
       return response.status(500).json({
         success: false,
-        message: 'Error al crear el contacto'
+        message: 'Error al procesar los contactos'
       })
     }
   }
