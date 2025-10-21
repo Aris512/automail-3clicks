@@ -29,6 +29,9 @@ router.post('/test-email', [EmailsController, 'sendEmail'])
 // Ruta pública para suscripción desde formularios externos (sin middleware de autenticación)
 router.post('/api/public/subscribe', [SubscribersController, 'publicSubscribe'])
 
+// Ruta pública para obtener lista de subscribers (sin middleware de autenticación)
+router.get('/api/public/subscribers', [SubscribersController, 'publicIndex'])
+
 // Página principal 
 router.get('/', ({ response }: HttpContext) => {
    response.redirect('/login')

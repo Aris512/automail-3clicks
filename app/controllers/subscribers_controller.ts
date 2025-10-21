@@ -463,4 +463,42 @@ export default class SubscribersController {
       }
     }
   }
+
+  /**
+   * Handle public subscription from external forms
+   */
+  async publicIndex({ request, response }: HttpContext) {
+    try {
+      // Configurar headers CORS
+      response.header('Access-Control-Allow-Origin', '*')
+      response.header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+      response.header('Access-Control-Allow-Headers', 'Content-Type')
+      
+      // Obtener tenantId opcional de query params
+      const tenantId = request.qs().tenantId
+      
+      let query = Subscriber.query()
+      
+      // Si se especifica tenantId, filtrar por ese tenant
+      if (tenantId) {
+        query = query.where('tenantId', tenantId)
+      }
+      
+      // Devolver todos los subscribers independientemente del estado
+      const subscribers = await query
+        .orderBy('createdAt', 'desc')
+        .select(['id', 'name', 'email', 'description', 'status', 'createdAt'])
+      
+      return response.json({
+        success: true,
+        data: subscribers
+      })
+    } catch (error) {
+      console.error('Error en publicIndex:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al obtener la lista de contactos'
+      })
+    }
+  }
 }

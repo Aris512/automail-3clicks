@@ -4,7 +4,7 @@ import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
 import GenerateForm from '~/components/GenerateForm'
-import { Users, Plus, Upload, FileText, Search, Edit, Trash2, Mail, Calendar } from 'lucide-react'
+import { Users, Plus, Upload, FileText, Search, Edit, Trash2, Mail, Calendar, RefreshCw } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 interface User {
@@ -38,6 +38,8 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
+  const [currentSubscribers, setCurrentSubscribers] = useState<Subscriber[]>(subscribers)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
@@ -47,6 +49,30 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       setNotification({ type: 'error', message: flash.error })
     }
   }, [flash])
+
+  // Función para actualizar la lista de contactos
+  const refreshSubscribers = async () => {
+    setIsRefreshing(true)
+    try {
+      const response = await fetch('/api/public/subscribers')
+      const result = await response.json()
+      
+      if (result.success) {
+        setCurrentSubscribers(result.data)
+        setNotification({ type: 'success', message: 'Lista de contactos actualizada correctamente' })
+        setTimeout(() => setNotification(null), 3000)
+      } else {
+        setNotification({ type: 'error', message: 'Error al actualizar la lista de contactos' })
+        setTimeout(() => setNotification(null), 3000)
+      }
+    } catch (error) {
+      console.error('Error al actualizar contactos:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al actualizar contactos' })
+      setTimeout(() => setNotification(null), 3000)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }
 
   // Formulario para agregar contacto manualmente
   const { data: formData, setData: setFormData, post, processing, errors, reset } = useForm({
@@ -80,6 +106,19 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       replace: true,
       onSuccess: () => {
         reset()
+        
+        // Agregar el nuevo contacto a currentSubscribers
+        const newSubscriber: Subscriber = {
+          id: Date.now(), // ID temporal hasta que se actualice desde el servidor
+          name: formData.name,
+          email: formData.email,
+          description: formData.description,
+          status: formData.status as 'active' | 'inactive' | 'archived',
+          createdAt: new Date().toISOString()
+        }
+        
+        setCurrentSubscribers(prevSubscribers => [newSubscriber, ...prevSubscribers])
+        
         setNotification({ type: 'success', message: '¡Contacto agregado correctamente!' })
         // Limpiar la notificación después de 3 segundos
         setTimeout(() => setNotification(null), 3000)
@@ -129,6 +168,22 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         onSuccess: (page) => {
           console.log('Edición exitosa:', page)
           handleCloseEdit()
+          
+          // Actualizar el contacto en currentSubscribers
+          setCurrentSubscribers(prevSubscribers => 
+            prevSubscribers.map(subscriber => 
+              subscriber.id === editingSubscriber.id 
+                ? { 
+                    ...subscriber, 
+                    name: editData.name,
+                    email: editData.email,
+                    description: editData.description,
+                    status: editData.status as 'active' | 'inactive' | 'archived'
+                  }
+                : subscriber
+            )
+          )
+          
           setNotification({ type: 'success', message: '¡Contacto actualizado correctamente!' })
           // Limpiar la notificación después de 3 segundos
           setTimeout(() => setNotification(null), 3000)
@@ -163,6 +218,14 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         replace: true,
         onSuccess: () => {
           setShowDeleteConfirm({show: false, subscriber: null})
+          
+          // Remover el contacto de currentSubscribers
+          setCurrentSubscribers(prevSubscribers => 
+            prevSubscribers.filter(subscriber => 
+              subscriber.id !== showDeleteConfirm.subscriber!.id
+            )
+          )
+          
           setNotification({ type: 'success', message: '¡Contacto eliminado correctamente!' })
           // Limpiar la notificación después de 3 segundos
           setTimeout(() => setNotification(null), 3000)
@@ -179,7 +242,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     setShowDeleteConfirm({show: false, subscriber: null})
   }
 
-  const filteredSubscribers = subscribers.filter(subscriber =>
+  const filteredSubscribers = currentSubscribers.filter(subscriber =>
     subscriber.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     subscriber.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (subscriber.description && subscriber.description.toLowerCase().includes(searchTerm.toLowerCase()))
@@ -469,6 +532,21 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900">Lista de Contactos</h3>
                   <div className="flex items-center space-x-3">
+                    <button
+                      onClick={refreshSubscribers}
+                      disabled={isRefreshing}
+                      className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-colors ${
+                        isRefreshing 
+                          ? 'bg-gray-100 text-gray-400 cursor-not-allowed' 
+                          : 'bg-orange-100 text-orange-600 hover:bg-orange-200'
+                      }`}
+                      title="Actualizar lista de contactos"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
+                      <span className="text-sm font-medium">
+                        {isRefreshing ? 'Actualizando...' : 'Actualizar'}
+                      </span>
+                    </button>
                     <div className="relative">
                       <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                       <input
