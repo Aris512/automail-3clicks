@@ -93,7 +93,7 @@ list
 
 subscriber_lists
   -id, suscriber_id, list_id
-  -source (manual/form/import)
+  -source (manual/import)
   -status (active/unsubscribed)
   -created_at, updated_at
   -subscribed_at

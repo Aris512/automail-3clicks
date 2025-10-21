@@ -15,7 +15,7 @@ export default class SubscriberList extends BaseModel {
   declare listId: number
 
   @column()
-  declare source: 'manual' | 'form' | 'import'
+  declare source: 'manual' | 'import'
 
   @column()
   declare status: 'active' | 'unsubscribed'

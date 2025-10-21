@@ -1,10 +1,9 @@
-import { Head, useForm, router } from '@inertiajs/react'
+import { Head, useForm } from '@inertiajs/react'
 import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import GenerateForm from '~/components/GenerateForm'
-import { Users, Plus, Upload, FileText, Search, Edit, Trash2, Mail, Calendar, RefreshCw } from 'lucide-react'
+import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 interface User {
@@ -33,7 +32,7 @@ interface ContactosProps {
 
 export default function Contactos({ user, subscribers = [], flash }: ContactosProps) {
   const { toasts, showError, removeToast } = useToast()
-  const [activeTab, setActiveTab] = useState<'manual' | 'form' | 'import'>('manual')
+  const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual')
   const [searchTerm, setSearchTerm] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
@@ -75,7 +74,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   }
 
   // Formulario para agregar contacto manualmente
-  const { data: formData, setData: setFormData, post, processing, errors, reset } = useForm({
+  const { data: formData, setData: setFormData, processing, errors, reset } = useForm({
     name: '',
     email: '',
     description: '',
@@ -99,34 +98,44 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       showError('Correo inválido', 'El correo tiene un mal formato')
       return
     }
-    post('/subscribers', {
-      preserveScroll: true,
-      preserveState: true,
-      only: ['subscribers'],
-      replace: true,
-      onSuccess: () => {
+    
+    // Crear contacto usando fetch API
+    fetch('/subscribers', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+      },
+      body: JSON.stringify(formData)
+    })
+    .then(response => response.json())
+    .then(result => {
+      if (result.success) {
         reset()
         
         // Agregar el nuevo contacto a currentSubscribers
         const newSubscriber: Subscriber = {
-          id: Date.now(), // ID temporal hasta que se actualice desde el servidor
+          id: result.data.id,
           name: formData.name,
           email: formData.email,
           description: formData.description,
           status: formData.status as 'active' | 'inactive' | 'archived',
-          createdAt: new Date().toISOString()
+          createdAt: result.data.createdAt || new Date().toISOString()
         }
         
         setCurrentSubscribers(prevSubscribers => [newSubscriber, ...prevSubscribers])
         
         setNotification({ type: 'success', message: '¡Contacto agregado correctamente!' })
-        // Limpiar la notificación después de 3 segundos
         setTimeout(() => setNotification(null), 3000)
-      },
-      onError: (errors) => {
-        console.error('Errores del formulario:', errors)
-        // Los errores se mostrarán automáticamente en los campos
+      } else {
+        setNotification({ type: 'error', message: result.message || 'Error al agregar contacto' })
+        setTimeout(() => setNotification(null), 3000)
       }
+    })
+    .catch(error => {
+      console.error('Error al crear contacto:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al crear contacto' })
+      setTimeout(() => setNotification(null), 3000)
     })
   }
 
@@ -150,8 +159,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   // Función para enviar formulario de edición
   const handleEditSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    console.log('Enviando formulario de edición:', editData)
-    console.log('ID del contacto:', editingSubscriber?.id)
     
     if (editingSubscriber) {
       const emailValidation = validateEmail(editData.email)
@@ -159,14 +166,19 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         showError('Correo inválido', 'El correo tiene un mal formato')
         return
       }
-      // Usar router.put directamente en lugar de put del useForm
-      router.put(`/subscribers/${editingSubscriber.id}`, editData, {
-        preserveScroll: true,
-        preserveState: true,
-        only: ['subscribers'],
-        replace: true,
-        onSuccess: (page) => {
-          console.log('Edición exitosa:', page)
+      
+      // Usar fetch API para actualizar contacto
+      fetch(`/subscribers/${editingSubscriber.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify(editData)
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
           handleCloseEdit()
           
           // Actualizar el contacto en currentSubscribers
@@ -185,20 +197,16 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
           )
           
           setNotification({ type: 'success', message: '¡Contacto actualizado correctamente!' })
-          // Limpiar la notificación después de 3 segundos
           setTimeout(() => setNotification(null), 3000)
-        },
-        onError: (errors) => {
-          console.error('Errores del formulario de edición:', errors)
-          // Mostrar errores específicos
-          if (errors.email) {
-            alert(`Error de email: ${errors.email}`)
-          } else if (errors.name) {
-            alert(`Error de nombre: ${errors.name}`)
-          } else {
-            alert('Error al actualizar el contacto. Por favor, verifica los datos.')
-          }
+        } else {
+          setNotification({ type: 'error', message: result.message || 'Error al actualizar contacto' })
+          setTimeout(() => setNotification(null), 3000)
         }
+      })
+      .catch(error => {
+        console.error('Error al actualizar contacto:', error)
+        setNotification({ type: 'error', message: 'Error de conexión al actualizar contacto' })
+        setTimeout(() => setNotification(null), 3000)
       })
     }
   }
@@ -211,12 +219,15 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   // Función para confirmar borrado
   const confirmDelete = () => {
     if (showDeleteConfirm.subscriber) {
-      router.delete(`/subscribers/${showDeleteConfirm.subscriber.id}`, {
-        preserveScroll: true,
-        preserveState: true,
-        only: ['subscribers'],
-        replace: true,
-        onSuccess: () => {
+      fetch(`/subscribers/${showDeleteConfirm.subscriber.id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+      })
+      .then(response => response.json())
+      .then(result => {
+        if (result.success) {
           setShowDeleteConfirm({show: false, subscriber: null})
           
           // Remover el contacto de currentSubscribers
@@ -227,12 +238,16 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
           )
           
           setNotification({ type: 'success', message: '¡Contacto eliminado correctamente!' })
-          // Limpiar la notificación después de 3 segundos
           setTimeout(() => setNotification(null), 3000)
-        },
-        onError: (errors) => {
-          console.error('Error al eliminar contacto:', errors)
+        } else {
+          setNotification({ type: 'error', message: result.message || 'Error al eliminar contacto' })
+          setTimeout(() => setNotification(null), 3000)
         }
+      })
+      .catch(error => {
+        console.error('Error al eliminar contacto:', error)
+        setNotification({ type: 'error', message: 'Error de conexión al eliminar contacto' })
+        setTimeout(() => setNotification(null), 3000)
       })
     }
   }
@@ -305,19 +320,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                   <div className="flex items-center space-x-2">
                     <Plus className="h-4 w-4" />
                     <span>Agregar Manual</span>
-                  </div>
-                </button>
-                <button
-                  onClick={() => setActiveTab('form')}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
-                    activeTab === 'form'
-                      ? 'border-orange-500 text-orange-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <div className="flex items-center space-x-2">
-                    <FileText className="h-4 w-4" />
-                    <span>Formulario</span>
                   </div>
                 </button>
                 <button
@@ -433,25 +435,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                   </form>
                 </div>
               </div>
-            )}
-
-            {/* Form Tab */}
-            {activeTab === 'form' && (
-              <GenerateForm 
-                onSubmit={(formData) => {
-                  console.log('Datos del formulario:', formData)
-                  setNotification({ type: 'success', message: '¡Formulario configurado correctamente!' })
-                  setTimeout(() => setNotification(null), 3000)
-                }}
-                onPreview={(formData) => {
-                  console.log('Vista previa:', formData)
-                }}
-                onGenerateCode={(formData) => {
-                  console.log('Generar código:', formData)
-                  setNotification({ type: 'success', message: '¡Código HTML generado exitosamente!' })
-                  setTimeout(() => setNotification(null), 3000)
-                }}
-              />
             )}
 
             {/* Import Tab */}
@@ -714,7 +697,6 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                       required
                     />
                     <p className="text-xs text-gray-500">Formato: usuario@dominio.com</p>
-                      
                   </div>
                   
                   <div>

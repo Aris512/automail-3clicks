@@ -38,19 +38,11 @@ export default class SubscribersController {
     })
   }
 
-  /**
-   * Display form para crear un nuevo contacto
-   */
-  async create({ auth, inertia }: HttpContext) {
-    return inertia.render('auth/subscribers/create', {
-      user: auth.user
-    })
-  }
 
   /**
-   * Handle form para crear un nuevo contacto
+   * Crear un nuevo contacto
    */
-  async store({ request, response, auth, session }: HttpContext) {
+  async store({ request, response, auth }: HttpContext) {
     const user = auth.user!
     
     // Obtener el tenant del usuario
@@ -60,8 +52,10 @@ export default class SubscribersController {
       .first()
 
     if (!tenantUser) {
-      session.flash('error', 'Usuario no tiene acceso a ningún tenant activo')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
     }
 
     // Validar datos
@@ -69,15 +63,19 @@ export default class SubscribersController {
     
     // Validaciones básicas
     if (!data.name || !data.email) {
-      session.flash('error', 'El nombre y email son requeridos')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'El nombre y email son requeridos'
+      })
     }
 
     // Validar que el status sea uno de los valores permitidos
     const allowedStatuses = ['active', 'inactive', 'archived']
     if (data.status && !allowedStatuses.includes(data.status)) {
-      session.flash('error', 'El estado debe ser: activo, inactivo o archivado')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'El estado debe ser: activo, inactivo o archivado'
+      })
     }
 
     // Verificar si el email ya existe en este tenant
@@ -87,12 +85,14 @@ export default class SubscribersController {
       .first()
 
     if (existingSubscriber) {
-      session.flash('error', 'Ya existe un contacto con este email')
-      return response.redirect().back()
+      return response.status(409).json({
+        success: false,
+        message: 'Ya existe un contacto con este email'
+      })
     }
 
     try {
-      await Subscriber.create({
+      const subscriber = await Subscriber.create({
         name: data.name,
         email: data.email,
         description: data.description || null,
@@ -100,82 +100,24 @@ export default class SubscribersController {
         tenantId: tenantUser.tenantId
       })
 
-      // Para Inertia, necesitamos redirigir de vuelta a la página de contactos
-      // con un mensaje de éxito en la sesión
-      session.flash('success', 'Contacto agregado exitosamente')
-      return response.redirect().back()
+      return response.status(201).json({
+        success: true,
+        message: 'Contacto agregado exitosamente',
+        data: subscriber
+      })
     } catch (error) {
       console.error('Error al crear contacto:', error)
-      session.flash('error', 'Error al crear el contacto')
-      return response.redirect().back()
-    }
-  }
-
-  /**
-   * Mostrar un contacto individual
-   */
-  async show({ params, auth, inertia, response }: HttpContext) {
-    const user = auth.user!
-    
-    // Obtener el tenant del usuario
-    const tenantUser = await TenantUser.query()
-      .where('userId', user.id)
-      .where('active', true)
-      .first()
-
-    if (!tenantUser) {
-      return response.badRequest({
+      return response.status(500).json({
         success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo'
+        message: 'Error al crear el contacto'
       })
     }
-
-    const subscriber = await Subscriber.query()
-      .where('id', params.id)
-      .where('tenantId', tenantUser.tenantId)
-      .firstOrFail()
-    
-    return inertia.render('auth/subscribers/show', {
-      user: auth.user,
-      subscriber
-    })
-  }
-
-  /**
-   * Editar un contacto individual
-   */
-  async edit({ params, auth, inertia, response }: HttpContext) {
-    const user = auth.user!
-    
-    // Obtener el tenant del usuario
-    const tenantUser = await TenantUser.query()
-      .where('userId', user.id)
-      .where('active', true)
-      .first()
-
-    if (!tenantUser) {
-      return response.badRequest({
-        success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo'
-      })
-    }
-
-    const subscriber = await Subscriber.query()
-      .where('id', params.id)
-      .where('tenantId', tenantUser.tenantId)
-      .firstOrFail()
-    
-    return inertia.render('auth/subscribers/edit', {
-      user: auth.user,
-      subscriber
-    })
   }
 
   /**
    * Handle form para editar un contacto
    */
-  async update({ params, request, response, auth, session }: HttpContext) {
-    console.log('Iniciando actualización de contacto:', params.id)
+  async update({ params, request, response, auth }: HttpContext) {
     const user = auth.user!
     
     // Obtener el tenant del usuario
@@ -185,12 +127,11 @@ export default class SubscribersController {
       .first()
 
     if (!tenantUser) {
-      console.log('Usuario no tiene tenant activo')
-      session.flash('error', 'Usuario no tiene acceso a ningún tenant activo')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
     }
-
-    console.log('Tenant encontrado:', tenantUser.tenantId)
 
     const subscriber = await Subscriber.query()
       .where('id', params.id)
@@ -198,21 +139,22 @@ export default class SubscribersController {
       .firstOrFail()
     
     const data = request.only(['name', 'email', 'description', 'status'])
-    console.log('Datos recibidos:', data)
     
     // Validaciones básicas
     if (!data.name || !data.email) {
-      console.log('Validación fallida: campos requeridos')
-      session.flash('error', 'El nombre y email son requeridos')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'El nombre y email son requeridos'
+      })
     }
 
     // Validar que el status sea uno de los valores permitidos
     const allowedStatuses = ['active', 'inactive', 'archived']
     if (data.status && !allowedStatuses.includes(data.status)) {
-      console.log('Validación fallida: status inválido')
-      session.flash('error', 'El estado debe ser: activo, inactivo o archivado')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'El estado debe ser: activo, inactivo o archivado'
+      })
     }
 
     // Verificar si el email ya existe en otro contacto del mismo tenant
@@ -223,30 +165,34 @@ export default class SubscribersController {
       .first()
 
     if (existingSubscriber) {
-      console.log('Email duplicado encontrado')
-      session.flash('error', 'Ya existe otro contacto con este email')
-      return response.redirect().back()
+      return response.status(409).json({
+        success: false,
+        message: 'Ya existe otro contacto con este email'
+      })
     }
 
     try {
-      console.log('Actualizando contacto...')
       subscriber.merge(data)
       await subscriber.save()
       
-      console.log('Contacto actualizado exitosamente')
-      session.flash('success', 'Contacto actualizado exitosamente')
-      return response.redirect().back()
+      return response.status(200).json({
+        success: true,
+        message: 'Contacto actualizado exitosamente',
+        data: subscriber
+      })
     } catch (error) {
       console.error('Error al actualizar contacto:', error)
-      session.flash('error', 'Error al actualizar el contacto')
-      return response.redirect().back()
+      return response.status(500).json({
+        success: false,
+        message: 'Error al actualizar el contacto'
+      })
     }
   }
 
   /**
    * Eliminar un contacto
    */
-  async destroy({ params, response, auth, session }: HttpContext) {
+  async destroy({ params, response, auth }: HttpContext) {
     const user = auth.user!
     
     // Obtener el tenant del usuario
@@ -256,8 +202,10 @@ export default class SubscribersController {
       .first()
 
     if (!tenantUser) {
-      session.flash('error', 'Usuario no tiene acceso a ningún tenant activo')
-      return response.redirect().back()
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
     }
 
     try {
@@ -268,12 +216,16 @@ export default class SubscribersController {
       
       await subscriber.delete()
       
-      session.flash('success', 'Contacto eliminado exitosamente')
-      return response.redirect().back()
+      return response.status(200).json({
+        success: true,
+        message: 'Contacto eliminado exitosamente'
+      })
     } catch (error) {
       console.error('Error al eliminar contacto:', error)
-      session.flash('error', 'Error al eliminar el contacto')
-      return response.redirect().back()
+      return response.status(500).json({
+        success: false,
+        message: 'Error al eliminar el contacto'
+      })
     }
   }
 
