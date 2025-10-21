@@ -69,12 +69,12 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         setTimeout(() => setNotification(null), 3000)
       } else {
         setNotification({ type: 'error', message: 'Error al actualizar la lista de contactos' })
-        setTimeout(() => setNotification(null), 3000)
+        setTimeout(() => setNotification(null), 10000)
       }
     } catch (error) {
       console.error('Error al actualizar contactos:', error)
       setNotification({ type: 'error', message: 'Error de conexión al actualizar contactos' })
-      setTimeout(() => setNotification(null), 3000)
+      setTimeout(() => setNotification(null), 10000)
     } finally {
       setIsRefreshing(false)
     }
@@ -136,13 +136,13 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         setTimeout(() => setNotification(null), 3000)
       } else {
         setNotification({ type: 'error', message: result.message || 'Error al agregar contacto' })
-        setTimeout(() => setNotification(null), 3000)
+        setTimeout(() => setNotification(null), 10000)
       }
     })
     .catch(error => {
       console.error('Error al crear contacto:', error)
       setNotification({ type: 'error', message: 'Error de conexión al crear contacto' })
-      setTimeout(() => setNotification(null), 3000)
+      setTimeout(() => setNotification(null), 10000)
     })
   }
 
@@ -207,13 +207,13 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
           setTimeout(() => setNotification(null), 3000)
         } else {
           setNotification({ type: 'error', message: result.message || 'Error al actualizar contacto' })
-          setTimeout(() => setNotification(null), 3000)
+          setTimeout(() => setNotification(null), 10000)
         }
       })
       .catch(error => {
         console.error('Error al actualizar contacto:', error)
         setNotification({ type: 'error', message: 'Error de conexión al actualizar contacto' })
-        setTimeout(() => setNotification(null), 3000)
+        setTimeout(() => setNotification(null), 10000)
       })
     }
   }
@@ -248,13 +248,13 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
           setTimeout(() => setNotification(null), 3000)
         } else {
           setNotification({ type: 'error', message: result.message || 'Error al eliminar contacto' })
-          setTimeout(() => setNotification(null), 3000)
+          setTimeout(() => setNotification(null), 10000)
         }
       })
       .catch(error => {
         console.error('Error al eliminar contacto:', error)
         setNotification({ type: 'error', message: 'Error de conexión al eliminar contacto' })
-        setTimeout(() => setNotification(null), 3000)
+        setTimeout(() => setNotification(null), 10000)
       })
     }
   }
@@ -273,7 +273,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     
     if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
       setNotification({ type: 'error', message: 'Formato de archivo no válido. Solo se permiten archivos CSV, XLS y XLSX' })
-      setTimeout(() => setNotification(null), 5000)
+      setTimeout(() => setNotification(null), 10000)
       return
     }
 
@@ -281,7 +281,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     const maxSize = 15 * 1024 * 1024 // 15MB
     if (file.size > maxSize) {
       setNotification({ type: 'error', message: 'El archivo excede el tamaño máximo permitido de 15MB' })
-      setTimeout(() => setNotification(null), 5000)
+      setTimeout(() => setNotification(null), 10000)
       return
     }
 
@@ -319,7 +319,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const handleImport = async () => {
     if (!selectedFile) {
       setNotification({ type: 'error', message: 'Por favor selecciona un archivo para importar' })
-      setTimeout(() => setNotification(null), 3000)
+      setTimeout(() => setNotification(null), 10000)
       return
     }
 
@@ -375,7 +375,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
           type: 'error', 
           message: result.message || 'Error al importar el archivo' 
         })
-        setTimeout(() => setNotification(null), 5000)
+        setTimeout(() => setNotification(null), 10000)
       }
     } catch (error) {
       console.error('Error al importar archivo:', error)
@@ -383,7 +383,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         type: 'error', 
         message: 'Error de conexión al importar el archivo' 
       })
-      setTimeout(() => setNotification(null), 5000)
+      setTimeout(() => setNotification(null), 10000)
     } finally {
       setIsUploading(false)
       setUploadProgress(0)

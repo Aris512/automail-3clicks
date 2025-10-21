@@ -2,7 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import Subscriber from '#models/subscriber'
 import TenantUser from '#models/tenant_user'
 import { inject } from '@adonisjs/core'
-import * as XLSX from 'xlsx'
+import XLSX from 'xlsx'
 import csv from 'csv-parser'
 import { createReadStream } from 'fs'
 
