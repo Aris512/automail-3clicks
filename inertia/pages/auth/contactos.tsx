@@ -355,9 +355,22 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
       const result = await response.json()
 
       if (result.success) {
+        // Construir mensaje detallado basado en la respuesta
+        let successMessage = result.message
+        
+        // Si hay emails omitidos, mostrar información adicional
+        if (result.skipped > 0) {
+          successMessage += `\n\nEmails omitidos (${result.skipped}): ${result.skippedEmails.join(', ')}`
+        }
+        
+        // Si hay emails importados, mostrarlos también
+        if (result.importedEmails && result.importedEmails.length > 0) {
+          successMessage += `\n\nEmails importados (${result.imported}): ${result.importedEmails.join(', ')}`
+        }
+        
         setNotification({ 
           type: 'success', 
-          message: `¡Importación exitosa! Se importaron ${result.imported} contactos` 
+          message: successMessage
         })
         
         // Limpiar archivo seleccionado
@@ -369,7 +382,9 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         // Actualizar la lista de contactos
         await refreshSubscribers()
         
-        setTimeout(() => setNotification(null), 5000)
+        // Mensajes de éxito duran más tiempo cuando hay información detallada
+        const timeoutDuration = result.skipped > 0 ? 15000 : 5000
+        setTimeout(() => setNotification(null), timeoutDuration)
       } else {
         setNotification({ 
           type: 'error', 
@@ -412,16 +427,20 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
         <ToastContainer toasts={toasts} onClose={removeToast} />
         {/* Notificación */}
         {notification && (
-          <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg ${
+          <div className={`fixed top-4 right-4 z-50 p-4 rounded-lg shadow-lg max-w-md ${
             notification.type === 'success' 
               ? 'bg-green-500 text-white' 
               : 'bg-red-500 text-white'
           }`}>
-            <div className="flex items-center space-x-2">
-              <span>{notification.message}</span>
+            <div className="flex items-start space-x-2">
+              <div className="flex-1">
+                <div className="whitespace-pre-line text-sm">
+                  {notification.message}
+                </div>
+              </div>
               <button
                 onClick={() => setNotification(null)}
-                className="ml-2 text-white hover:text-gray-200"
+                className="ml-2 text-white hover:text-gray-200 flex-shrink-0"
               >
                 ×
               </button>

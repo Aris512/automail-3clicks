@@ -587,20 +587,30 @@ export default class SubscribersController {
         .select('email')
 
       const existingEmailList = existingEmails.map(sub => sub.email)
+      console.log(`📋 [IMPORT] Emails existentes encontrados: ${existingEmailList.length}`)
+      
       if (existingEmailList.length > 0) {
-        console.log(`❌ [IMPORT] Emails ya existentes en BD: ${existingEmailList.join(', ')}`)
-        return response.status(409).json({
-          success: false,
-          message: `Los siguientes emails ya existen en la base de datos: ${existingEmailList.join(', ')}`,
-          existingEmails: existingEmailList
+        console.log(`⚠️ [IMPORT] Emails ya existentes en BD: ${existingEmailList.join(', ')}`)
+      }
+
+      // Filtrar solo los emails nuevos (que no existen en la base de datos)
+      const newSubscribers = subscribers.filter(sub => !existingEmailList.includes(sub.email))
+      console.log(`🆕 [IMPORT] Emails nuevos para importar: ${newSubscribers.length}`)
+      
+      if (newSubscribers.length === 0) {
+        console.log('ℹ️ [IMPORT] Todos los emails ya existen en la base de datos')
+        return response.status(200).json({
+          success: true,
+          message: `Todos los emails del archivo ya existen en la base de datos. No se importaron nuevos contactos.`,
+          imported: 0,
+          skipped: subscribers.length,
+          skippedEmails: existingEmailList
         })
       }
 
-      console.log('✅ [IMPORT] No hay emails duplicados en la base de datos')
-
-      // Insertar los nuevos subscribers
-      console.log('💾 [IMPORT] Preparando datos para inserción...')
-      const subscribersToInsert = subscribers.map(sub => ({
+      // Insertar solo los nuevos subscribers
+      console.log('💾 [IMPORT] Preparando datos para inserción de emails nuevos...')
+      const subscribersToInsert = newSubscribers.map(sub => ({
         email: sub.email,
         name: sub.name || '',
         description: sub.description || '',
@@ -608,15 +618,23 @@ export default class SubscribersController {
         status: 'active' as const
       }))
 
-      console.log(`💾 [IMPORT] Insertando ${subscribersToInsert.length} contactos en la base de datos...`)
+      console.log(`💾 [IMPORT] Insertando ${subscribersToInsert.length} contactos nuevos en la base de datos...`)
       await Subscriber.createMany(subscribersToInsert)
 
-      console.log(`✅ [IMPORT] Importación completada exitosamente: ${subscribers.length} contactos`)
+      console.log(`✅ [IMPORT] Importación completada exitosamente: ${newSubscribers.length} contactos nuevos`)
+
+      // Preparar respuesta con información detallada
+      const responseMessage = existingEmailList.length > 0 
+        ? `Se importaron ${newSubscribers.length} contactos nuevos. Se omitieron ${existingEmailList.length} emails que ya existían.`
+        : `Se importaron exitosamente ${newSubscribers.length} contactos nuevos.`
 
       return response.status(201).json({
         success: true,
-        message: `Se importaron exitosamente ${subscribers.length} contactos`,
-        imported: subscribers.length
+        message: responseMessage,
+        imported: newSubscribers.length,
+        skipped: existingEmailList.length,
+        skippedEmails: existingEmailList,
+        importedEmails: newSubscribers.map(sub => sub.email)
       })
 
     } catch (error) {
