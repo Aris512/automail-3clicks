@@ -3,8 +3,8 @@ import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw } from 'lucide-react'
-import { useState, useEffect } from 'react'
+import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
 
 interface User {
   id: number
@@ -39,6 +39,13 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
   const [currentSubscribers, setCurrentSubscribers] = useState<Subscriber[]>(subscribers)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  
+  // Estados para importación
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [dragActive, setDragActive] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
@@ -257,6 +264,139 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     setShowDeleteConfirm({show: false, subscriber: null})
   }
 
+  // Funciones para manejo de archivos
+  const handleFileSelect = (file: File) => {
+    // Validar tipo de archivo
+    const allowedTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
+    const allowedExtensions = ['.csv', '.xls', '.xlsx']
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'))
+    
+    if (!allowedTypes.includes(file.type) && !allowedExtensions.includes(fileExtension)) {
+      setNotification({ type: 'error', message: 'Formato de archivo no válido. Solo se permiten archivos CSV, XLS y XLSX' })
+      setTimeout(() => setNotification(null), 5000)
+      return
+    }
+
+    // Validar tamaño (15MB máximo)
+    const maxSize = 15 * 1024 * 1024 // 15MB
+    if (file.size > maxSize) {
+      setNotification({ type: 'error', message: 'El archivo excede el tamaño máximo permitido de 15MB' })
+      setTimeout(() => setNotification(null), 5000)
+      return
+    }
+
+    setSelectedFile(file)
+    setNotification({ type: 'success', message: `Archivo seleccionado: ${file.name}` })
+    setTimeout(() => setNotification(null), 3000)
+  }
+
+  const handleDrag = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (e.type === 'dragenter' || e.type === 'dragover') {
+      setDragActive(true)
+    } else if (e.type === 'dragleave') {
+      setDragActive(false)
+    }
+  }
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragActive(false)
+    
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      handleFileSelect(e.dataTransfer.files[0])
+    }
+  }
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      handleFileSelect(e.target.files[0])
+    }
+  }
+
+  const handleImport = async () => {
+    if (!selectedFile) {
+      setNotification({ type: 'error', message: 'Por favor selecciona un archivo para importar' })
+      setTimeout(() => setNotification(null), 3000)
+      return
+    }
+
+    setIsUploading(true)
+    setUploadProgress(0)
+
+    try {
+      const formData = new FormData()
+      formData.append('file', selectedFile)
+
+      // Simular progreso
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          if (prev >= 90) {
+            clearInterval(progressInterval)
+            return prev
+          }
+          return prev + 10
+        })
+      }, 200)
+
+      const response = await fetch('/subscribers/import', {
+        method: 'POST',
+        headers: {
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: formData
+      })
+
+      clearInterval(progressInterval)
+      setUploadProgress(100)
+
+      const result = await response.json()
+
+      if (result.success) {
+        setNotification({ 
+          type: 'success', 
+          message: `¡Importación exitosa! Se importaron ${result.imported} contactos` 
+        })
+        
+        // Limpiar archivo seleccionado
+        setSelectedFile(null)
+        if (fileInputRef.current) {
+          fileInputRef.current.value = ''
+        }
+        
+        // Actualizar la lista de contactos
+        await refreshSubscribers()
+        
+        setTimeout(() => setNotification(null), 5000)
+      } else {
+        setNotification({ 
+          type: 'error', 
+          message: result.message || 'Error al importar el archivo' 
+        })
+        setTimeout(() => setNotification(null), 5000)
+      }
+    } catch (error) {
+      console.error('Error al importar archivo:', error)
+      setNotification({ 
+        type: 'error', 
+        message: 'Error de conexión al importar el archivo' 
+      })
+      setTimeout(() => setNotification(null), 5000)
+    } finally {
+      setIsUploading(false)
+      setUploadProgress(0)
+    }
+  }
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null)
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
   const filteredSubscribers = currentSubscribers.filter(subscriber =>
     subscriber.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     subscriber.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -441,67 +581,132 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
             {activeTab === 'import' && (
               <div className="space-y-6">
                 <div className="bg-white rounded-lg shadow-sm border p-6">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Importar Contactos desde CSV</h3>
+                  <h3 className="text-lg font-semibold text-gray-900 mb-4">Importar Contactos desde Archivo</h3>
                   <div className="space-y-6">
-                    <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center">
-                      <Upload className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                      <h4 className="text-lg font-medium text-gray-900 mb-2">Arrastra y suelta tu archivo CSV aquí</h4>
-                      <p className="text-sm text-gray-600 mb-4">o</p>
-                      <button className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors">
-                        Seleccionar Archivo
-                      </button>
-                      <p className="text-xs text-gray-500 mt-4">
-                        Formatos soportados: CSV, Excel (.xlsx, .xls)
-                      </p>
-                    </div>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Lista de Destino
-                        </label>
-                        <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                          <option value="">Selecciona una lista</option>
-                          <option value="1">Lista Principal</option>
-                          <option value="2">Newsletter</option>
-                          <option value="3">Promociones</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">
-                          Estado por Defecto
-                        </label>
-                        <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500">
-                          <option value="active">Activo</option>
-                          <option value="inactive">Inactivo</option>
-                          <option value="pending">Pendiente</option>
-                        </select>
-                      </div>
+                    {/* Área de subida de archivos */}
+                    <div 
+                      className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+                        dragActive 
+                          ? 'border-orange-400 bg-orange-50' 
+                          : selectedFile 
+                            ? 'border-green-400 bg-green-50' 
+                            : 'border-gray-300 hover:border-gray-400'
+                      }`}
+                      onDragEnter={handleDrag}
+                      onDragLeave={handleDrag}
+                      onDragOver={handleDrag}
+                      onDrop={handleDrop}
+                    >
+                      {selectedFile ? (
+                        <div className="space-y-4">
+                          <FileText className="h-12 w-12 text-green-500 mx-auto" />
+                          <div>
+                            <h4 className="text-lg font-medium text-gray-900 mb-2">Archivo Seleccionado</h4>
+                            <p className="text-sm text-gray-600 mb-2">{selectedFile.name}</p>
+                            <p className="text-xs text-gray-500">
+                              Tamaño: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                            </p>
+                          </div>
+                          <button
+                            onClick={clearSelectedFile}
+                            className="text-sm text-red-600 hover:text-red-800 underline"
+                          >
+                            Cambiar archivo
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="space-y-4">
+                          <Upload className="h-12 w-12 text-gray-400 mx-auto" />
+                          <h4 className="text-lg font-medium text-gray-900 mb-2">
+                            Arrastra y suelta tu archivo aquí
+                          </h4>
+                          <p className="text-sm text-gray-600 mb-4">o</p>
+                          <button 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="bg-orange-500 text-white px-4 py-2 rounded-lg hover:bg-orange-600 transition-colors"
+                          >
+                            Seleccionar Archivo
+                          </button>
+                          <p className="text-xs text-gray-500 mt-4">
+                            Formatos soportados: CSV, Excel (.xlsx, .xls) • Máximo 15MB
+                          </p>
+                        </div>
+                      )}
+                      
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept=".csv,.xls,.xlsx"
+                        onChange={handleFileInputChange}
+                        className="hidden"
+                      />
                     </div>
 
+                    {/* Barra de progreso */}
+                    {isUploading && (
+                      <div className="space-y-2">
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>Importando contactos...</span>
+                          <span>{uploadProgress}%</span>
+                        </div>
+                        <div className="w-full bg-gray-200 rounded-full h-2">
+                          <div 
+                            className="bg-orange-500 h-2 rounded-full transition-all duration-300"
+                            style={{ width: `${uploadProgress}%` }}
+                          ></div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Información del formato */}
                     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                      <h4 className="text-sm font-medium text-blue-900 mb-2">Formato de archivo CSV requerido:</h4>
-                      <div className="text-xs text-blue-800 space-y-1">
-                        <p>• Primera fila debe contener los encabezados de columna</p>
-                        <p>• Columnas requeridas: email</p>
-                        <p>• Columnas opcionales: name, description</p>
-                        <p>• Separador: coma (,)</p>
-                        <p>• Codificación: UTF-8</p>
+                      <div className="flex items-start space-x-2">
+                        <AlertCircle className="h-5 w-5 text-blue-600 mt-0.5 flex-shrink-0" />
+                        <div>
+                          <h4 className="text-sm font-medium text-blue-900 mb-2">Formato de archivo requerido:</h4>
+                          <div className="text-xs text-blue-800 space-y-1">
+                            <p>• Primera fila debe contener los encabezados de columna</p>
+                            <p>• <strong>Columna requerida:</strong> email</p>
+                            <p>• <strong>Columnas opcionales:</strong> name, description</p>
+                            <p>• Separador: coma (,)</p>
+                            <p>• Codificación: UTF-8</p>
+                            <p>• Tamaño máximo: 15MB</p>
+                          </div>
+                        </div>
                       </div>
                     </div>
 
+                    {/* Ejemplo de formato */}
+                    <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                      <h4 className="text-sm font-medium text-gray-900 mb-2">Ejemplo de formato CSV:</h4>
+                      <div className="bg-white border rounded p-3 font-mono text-xs text-gray-700">
+                        <div>email,name,description</div>
+                        <div>juan@ejemplo.com,Juan Pérez,Cliente potencial</div>
+                        <div>maria@empresa.com,Maria García,Lead calificado</div>
+                      </div>
+                    </div>
+
+                    {/* Botones de acción */}
                     <div className="flex justify-end space-x-3">
                       <button
                         type="button"
-                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                        onClick={clearSelectedFile}
+                        disabled={isUploading}
+                        className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        Cancelar
+                        Limpiar
                       </button>
                       <button
                         type="button"
-                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                        onClick={handleImport}
+                        disabled={!selectedFile || isUploading}
+                        className={`px-4 py-2 rounded-lg transition-colors ${
+                          !selectedFile || isUploading
+                            ? 'bg-gray-400 cursor-not-allowed' 
+                            : 'bg-orange-500 hover:bg-orange-600'
+                        } text-white`}
                       >
-                        Importar Contactos
+                        {isUploading ? 'Importando...' : 'Importar Contactos'}
                       </button>
                     </div>
                   </div>
