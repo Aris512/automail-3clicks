@@ -14,7 +14,7 @@ export default class SubscribersController {
   /**
    * Crear lista automáticamente si no existe
    */
-  private async createListIfNotExists(tenantId: number, tenantSlug: string, listName: string): Promise<number> {
+  private async createListIfNotExists(tenantId: number, listName: string): Promise<number> {
     // Buscar si la lista ya existe
     const existingList = await List.query()
       .where('tenantId', tenantId)
@@ -26,16 +26,42 @@ export default class SubscribersController {
       return existingList.id
     }
     
-    // Crear nueva lista usando el slug del tenant
+    // Generar slug único basado en el nombre de la lista
+    const baseSlug = listName.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remover caracteres especiales
+      .replace(/\s+/g, '-') // Reemplazar espacios con guiones
+      .replace(/-+/g, '-') // Reemplazar múltiples guiones con uno solo
+      .trim()
+    
+    // Verificar si el slug ya existe y agregar sufijo si es necesario
+    let finalSlug = baseSlug
+    let counter = 1
+    
+    while (true) {
+      const existingList = await List.query()
+        .where('tenantId', tenantId)
+        .where('slug', finalSlug)
+        .first()
+      
+      if (!existingList) {
+        break
+      }
+      
+      finalSlug = `${baseSlug}-${counter}`
+      counter++
+    }
+
+    // Crear nueva lista usando el slug único generado
     const newList = await List.create({
       tenantId: tenantId,
       name: listName,
-      slug: tenantSlug,
+      slug: finalSlug,
       description: 'Lista creada automaticamente',
       status: 'active'
     })
     
-    console.log(`✅ [CREATE_LIST] Nueva lista creada: ${listName} (ID: ${newList.id}) con slug del tenant: ${tenantSlug}`)
+    console.log(`✅ [CREATE_LIST] Nueva lista creada: ${listName} (ID: ${newList.id}) con slug único: ${finalSlug}`)
     return newList.id
   }
   /**
@@ -972,7 +998,7 @@ export default class SubscribersController {
       
       for (const listName of listNamesFromFile) {
         if (listName && listName.trim()) {
-          const listId = await this.createListIfNotExists(tenantUser.tenantId, tenantUser.tenant.slug, listName.trim())
+          const listId = await this.createListIfNotExists(tenantUser.tenantId, listName.trim())
           listIdMap.set(listName.trim(), listId)
         }
       }

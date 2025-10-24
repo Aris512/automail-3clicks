@@ -82,8 +82,31 @@ export default class ListsController {
       })
     }
 
-    // Generar slug automáticamente basado solo en el tenant
-    const finalSlug = tenant.slug
+    // Generar slug único basado en el nombre de la lista
+    const baseSlug = data.name.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remover caracteres especiales
+      .replace(/\s+/g, '-') // Reemplazar espacios con guiones
+      .replace(/-+/g, '-') // Reemplazar múltiples guiones con uno solo
+      .trim()
+    
+    // Verificar si el slug ya existe y agregar sufijo si es necesario
+    let finalSlug = baseSlug
+    let counter = 1
+    
+    while (true) {
+      const existingList = await List.query()
+        .where('tenantId', tenantUser.tenantId)
+        .where('slug', finalSlug)
+        .first()
+      
+      if (!existingList) {
+        break
+      }
+      
+      finalSlug = `${baseSlug}-${counter}`
+      counter++
+    }
 
     try {
       const list = await List.create({
