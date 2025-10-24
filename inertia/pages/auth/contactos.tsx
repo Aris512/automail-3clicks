@@ -50,6 +50,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
   const [viewingSubscriber, setViewingSubscriber] = useState<Subscriber | null>(null)
+  const [viewingList, setViewingList] = useState<ListItem | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
   const [currentSubscribers, setCurrentSubscribers] = useState<Subscriber[]>(subscribers)
   const [currentLists, setCurrentLists] = useState<ListItem[]>(lists)
@@ -169,6 +170,16 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   // Función para cerrar modal de vista
   const handleCloseView = () => {
     setViewingSubscriber(null)
+  }
+
+  // Función para abrir modal de visualización de lista
+  const handleViewList = (list: ListItem) => {
+    setViewingList(list)
+  }
+
+  // Función para cerrar modal de visualización de lista
+  const handleCloseListView = () => {
+    setViewingList(null)
   }
 
   // Función para abrir modal de edición
@@ -1215,9 +1226,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                             Lista
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Descripción
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Estado
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1244,11 +1252,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                                     {list.name}
                                   </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900">
-                                {list.description || 'Sin descripción'}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -1280,6 +1283,13 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                               <div className="flex items-center justify-end space-x-2">
+                                <button 
+                                  onClick={() => handleViewList(list)}
+                                  className="text-blue-600 hover:text-blue-900"
+                                  title="Ver detalles de la lista"
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </button>
                                 <button 
                                   onClick={() => handleEditList(list)}
                                   className="text-orange-600 hover:text-orange-900"
@@ -1628,6 +1638,105 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     </button>
                   </div>
                 </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Vista de Solo Lectura para Listas */}
+        {viewingList && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-900">Detalles de la Lista</h3>
+              </div>
+              
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nombre
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      {viewingList.name}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Slug
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      {viewingList.slug}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Descripción
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 min-h-[60px]">
+                      {viewingList.description || 'Sin descripción'}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Estado
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        viewingList.status === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-red-100 text-red-800'
+                      }`}>
+                        {viewingList.status === 'active' ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Lista Predeterminada
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        viewingList.isActivated 
+                          ? 'bg-green-100 text-green-800' 
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {viewingList.isActivated ? 'Sí (Predeterminada)' : 'No'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Fecha de Creación
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      {new Date(viewingList.createdAt).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 border-t border-gray-200 flex-shrink-0">
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseListView}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
               </div>
             </div>
           </div>

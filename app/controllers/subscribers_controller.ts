@@ -12,6 +12,47 @@ import { DateTime } from 'luxon'
 @inject()
 export default class SubscribersController {
   /**
+   * Obtener la lista predeterminada (isActivated = true) del tenant
+   */
+  private async getDefaultList(tenantId: number): Promise<number | null> {
+    const defaultList = await List.query()
+      .where('tenantId', tenantId)
+      .where('isActivated', true)
+      .where('status', 'active')
+      .first()
+    
+    return defaultList ? defaultList.id : null
+  }
+
+  /**
+   * Crear lista automáticamente si no existe
+   */
+  private async createListIfNotExists(tenantId: number, tenantSlug: string, listName: string): Promise<number> {
+    // Buscar si la lista ya existe
+    const existingList = await List.query()
+      .where('tenantId', tenantId)
+      .where('name', listName)
+      .first()
+    
+    if (existingList) {
+      console.log(`📋 [CREATE_LIST] Lista existente encontrada: ${listName} (ID: ${existingList.id})`)
+      return existingList.id
+    }
+    
+    // Crear nueva lista usando el slug del tenant
+    const newList = await List.create({
+      tenantId: tenantId,
+      name: listName,
+      slug: tenantSlug,
+      description: 'Lista creada automaticamente',
+      status: 'active',
+      isActivated: false
+    })
+    
+    console.log(`✅ [CREATE_LIST] Nueva lista creada: ${listName} (ID: ${newList.id}) con slug del tenant: ${tenantSlug}`)
+    return newList.id
+  }
+  /**
    * Display una lista de contactos
    */
   async index({ auth, inertia, session }: HttpContext) {
@@ -223,6 +264,10 @@ export default class SubscribersController {
       // Asociar contactos con listas individuales
       console.log(`🔗 [STORE] Procesando asociaciones de listas para ${createdSubscribers.length} contactos...`)
       
+      // Obtener la lista predeterminada del tenant
+      const defaultListId = await this.getDefaultList(tenantUser.tenantId)
+      console.log(`🔗 [STORE] Lista predeterminada del tenant: ${defaultListId || 'No encontrada'}`)
+      
       // Verificar que las listas pertenezcan al tenant (obtener todas las listas válidas de una vez)
       const allListIds = new Set<number>()
       for (const contact of newContacts) {
@@ -231,43 +276,55 @@ export default class SubscribersController {
         }
       }
       
+      // Si hay listas específicas, validarlas; si no, usar la lista predeterminada
+      let validListIds: number[] = []
+      
       if (allListIds.size > 0) {
         const validLists = await List.query()
           .where('tenantId', tenantUser.tenantId)
           .whereIn('id', Array.from(allListIds))
           .select('id')
         
-        const validListIds = validLists.map(list => list.id)
+        validListIds = validLists.map(list => list.id)
         console.log(`🔗 [STORE] Listas válidas encontradas: ${validListIds.join(', ')}`)
+      } else if (defaultListId) {
+        // Si no hay listas específicas pero hay lista predeterminada, usarla
+        validListIds = [defaultListId]
+        console.log(`🔗 [STORE] Usando lista predeterminada: ${defaultListId}`)
+      }
+      
+      if (validListIds.length > 0) {
+        // Crear las asociaciones en subscriber_lists para cada contacto individualmente
+        const subscriberListAssociations = []
         
-        if (validListIds.length > 0) {
-          // Crear las asociaciones en subscriber_lists para cada contacto individualmente
-          const subscriberListAssociations = []
+        for (let i = 0; i < createdSubscribers.length; i++) {
+          const subscriber = createdSubscribers[i]
+          const contact = newContacts[i]
           
-          for (let i = 0; i < createdSubscribers.length; i++) {
-            const subscriber = createdSubscribers[i]
-            const contact = newContacts[i]
-            
-            if (contact.listIds && contact.listIds.length > 0) {
-              // Solo agregar listas que sean válidas para el tenant
-              const contactValidListIds = contact.listIds.filter(id => validListIds.includes(id))
-              
-              for (const listId of contactValidListIds) {
-                subscriberListAssociations.push({
-                  subscriber_id: subscriber.id,
-                  list_id: listId,
-                  source: 'manual' as const,
-                  status: 'active' as const,
-                  subscribed_at: DateTime.now()
-                })
-              }
-            }
+          let contactListIds: number[] = []
+          
+          if (contact.listIds && contact.listIds.length > 0) {
+            // Solo agregar listas que sean válidas para el tenant
+            contactListIds = contact.listIds.filter(id => validListIds.includes(id))
+          } else if (defaultListId) {
+            // Si no tiene listas específicas, usar la lista predeterminada
+            contactListIds = [defaultListId]
           }
           
-          if (subscriberListAssociations.length > 0) {
-            await SubscriberList.createMany(subscriberListAssociations)
-            console.log(`✅ [STORE] Asociaciones con listas creadas: ${subscriberListAssociations.length}`)
+          for (const listId of contactListIds) {
+            subscriberListAssociations.push({
+              subscriber_id: subscriber.id,
+              list_id: listId,
+              source: 'manual' as const,
+              status: 'active' as const,
+              subscribed_at: DateTime.now()
+            })
           }
+        }
+        
+        if (subscriberListAssociations.length > 0) {
+          await SubscriberList.createMany(subscriberListAssociations)
+          console.log(`✅ [STORE] Asociaciones con listas creadas: ${subscriberListAssociations.length}`)
         }
       }
 
@@ -735,6 +792,7 @@ export default class SubscribersController {
     const tenantUser = await TenantUser.query()
       .where('userId', user.id)
       .where('active', true)
+      .preload('tenant')
       .first()
 
     if (!tenantUser) {
@@ -745,7 +803,7 @@ export default class SubscribersController {
       })
     }
 
-    console.log(`🏢 [IMPORT] Tenant encontrado: ID ${tenantUser.tenantId}`)
+    console.log(`🏢 [IMPORT] Tenant encontrado: ID ${tenantUser.tenantId}, Slug: ${tenantUser.tenant.slug}`)
 
     try {
       console.log('📁 [IMPORT] Procesando archivo subido...')
@@ -792,7 +850,7 @@ export default class SubscribersController {
 
       console.log(`✅ [IMPORT] Validaciones de archivo pasadas correctamente`)
 
-      let subscribers: Array<{ email: string; name?: string; description?: string }> = []
+      let subscribers: Array<{ email: string; name?: string; description?: string; list?: string }> = []
 
       // Procesar según el tipo de archivo
       if (fileExtension === 'csv') {
@@ -816,7 +874,7 @@ export default class SubscribersController {
       // Mostrar algunos ejemplos de los datos extraídos
       console.log('📝 [IMPORT] Primeros 3 contactos extraídos:')
       subscribers.slice(0, 3).forEach((sub, index) => {
-        console.log(`   ${index + 1}. Email: ${sub.email}, Nombre: ${sub.name || 'N/A'}, Descripción: ${sub.description || 'N/A'}`)
+        console.log(`   ${index + 1}. Email: ${sub.email}, Nombre: ${sub.name || 'N/A'}, Descripción: ${sub.description || 'N/A'}, Lista: ${sub.list || 'N/A'}`)
       })
 
       // Validar que todos los emails sean válidos
@@ -898,9 +956,68 @@ export default class SubscribersController {
       }))
 
       console.log(`💾 [IMPORT] Insertando ${subscribersToInsert.length} contactos nuevos en la base de datos...`)
-      await Subscriber.createMany(subscribersToInsert)
+      const createdSubscribers = await Subscriber.createMany(subscribersToInsert)
 
       console.log(`✅ [IMPORT] Importación completada exitosamente: ${newSubscribers.length} contactos nuevos`)
+
+      // Asociar contactos importados con listas específicas o predeterminada
+      console.log(`🔗 [IMPORT] Asociando contactos importados con listas...`)
+      
+      // Obtener la lista predeterminada del tenant
+      const defaultListId = await this.getDefaultList(tenantUser.tenantId)
+      console.log(`🔗 [IMPORT] Lista predeterminada del tenant: ${defaultListId || 'No encontrada'}`)
+      
+      // Procesar listas específicas del archivo
+      const listNamesFromFile = [...new Set(newSubscribers.map(sub => sub.list).filter(list => list && list.trim()))]
+      console.log(`🔗 [IMPORT] Listas encontradas en el archivo: ${listNamesFromFile.join(', ') || 'Ninguna'}`)
+      
+      // Crear o obtener IDs de listas
+      const listIdMap = new Map<string, number>()
+      
+      for (const listName of listNamesFromFile) {
+        if (listName && listName.trim()) {
+          const listId = await this.createListIfNotExists(tenantUser.tenantId, tenantUser.tenant.slug, listName.trim())
+          listIdMap.set(listName.trim(), listId)
+        }
+      }
+      
+      // Crear las asociaciones en subscriber_lists
+      const subscriberListAssociations = []
+      
+      for (let i = 0; i < createdSubscribers.length; i++) {
+        const subscriber = createdSubscribers[i]
+        const originalSubscriber = newSubscribers[i]
+        
+        let listId: number | null = null
+        
+        // Si el contacto tiene lista específica en el archivo, usarla
+        if (originalSubscriber.list && originalSubscriber.list.trim()) {
+          listId = listIdMap.get(originalSubscriber.list.trim()) || null
+        }
+        
+        // Si no tiene lista específica, usar la lista predeterminada
+        if (!listId && defaultListId) {
+          listId = defaultListId
+        }
+        
+        // Solo crear asociación si hay una lista válida
+        if (listId) {
+          subscriberListAssociations.push({
+            subscriber_id: subscriber.id,
+            list_id: listId,
+            source: 'import' as const,
+            status: 'active' as const,
+            subscribed_at: DateTime.now()
+          })
+        }
+      }
+      
+      if (subscriberListAssociations.length > 0) {
+        await SubscriberList.createMany(subscriberListAssociations)
+        console.log(`✅ [IMPORT] Asociaciones con listas creadas: ${subscriberListAssociations.length}`)
+      } else {
+        console.log(`⚠️ [IMPORT] No se encontraron listas válidas, los contactos se importaron sin lista asignada`)
+      }
 
       // Preparar respuesta con información detallada
       const responseMessage = existingEmailList.length > 0 
@@ -929,11 +1046,11 @@ export default class SubscribersController {
   /**
    * Parsear archivo CSV
    */
-  private async parseCSVFile(filePath: string): Promise<Array<{ email: string; name?: string; description?: string }>> {
+  private async parseCSVFile(filePath: string): Promise<Array<{ email: string; name?: string; description?: string; list?: string }>> {
     console.log(`📝 [CSV] Iniciando parsing de archivo CSV: ${filePath}`)
     
     return new Promise((resolve, reject) => {
-      const results: Array<{ email: string; name?: string; description?: string }> = []
+      const results: Array<{ email: string; name?: string; description?: string; list?: string }> = []
       let rowCount = 0
       
       const stream = createReadStream(filePath, { encoding: 'utf8' })
@@ -958,10 +1075,11 @@ export default class SubscribersController {
           const subscriber = {
             email: normalizedRow.email.trim(),
             name: normalizedRow.name?.trim() || '',
-            description: normalizedRow.description?.trim() || ''
+            description: normalizedRow.description?.trim() || '',
+            list: normalizedRow.list?.trim() || normalizedRow.lista?.trim() || ''
           }
           results.push(subscriber)
-          console.log(`📝 [CSV] Contacto agregado: ${subscriber.email}`)
+          console.log(`📝 [CSV] Contacto agregado: ${subscriber.email} - Lista: ${subscriber.list || 'N/A'}`)
         } else {
           console.log(`⚠️ [CSV] Fila ${rowCount} omitida - sin email válido`)
         }
@@ -982,7 +1100,7 @@ export default class SubscribersController {
   /**
    * Parsear archivo Excel (XLSX/XLS)
    */
-  private async parseExcelFile(filePath: string): Promise<Array<{ email: string; name?: string; description?: string }>> {
+  private async parseExcelFile(filePath: string): Promise<Array<{ email: string; name?: string; description?: string; list?: string }>> {
     console.log(`📊 [EXCEL] Iniciando parsing de archivo Excel: ${filePath}`)
     
     try {
@@ -1024,11 +1142,12 @@ export default class SubscribersController {
 
       const nameIndex = normalizedHeaders.findIndex(header => header === 'name')
       const descriptionIndex = normalizedHeaders.findIndex(header => header === 'description')
+      const listIndex = normalizedHeaders.findIndex(header => header === 'list' || header === 'lista')
 
-      console.log(`📊 [EXCEL] Índices encontrados - Email: ${emailIndex}, Nombre: ${nameIndex}, Descripción: ${descriptionIndex}`)
+      console.log(`📊 [EXCEL] Índices encontrados - Email: ${emailIndex}, Nombre: ${nameIndex}, Descripción: ${descriptionIndex}, Lista: ${listIndex}`)
 
       // Procesar filas de datos
-      const results: Array<{ email: string; name?: string; description?: string }> = []
+      const results: Array<{ email: string; name?: string; description?: string; list?: string }> = []
       
       for (let i = 1; i < jsonData.length; i++) {
         const row = jsonData[i] as any[]
@@ -1038,10 +1157,11 @@ export default class SubscribersController {
           const subscriber = {
             email: row[emailIndex].toString().trim(),
             name: nameIndex !== -1 && row[nameIndex] ? row[nameIndex].toString().trim() : '',
-            description: descriptionIndex !== -1 && row[descriptionIndex] ? row[descriptionIndex].toString().trim() : ''
+            description: descriptionIndex !== -1 && row[descriptionIndex] ? row[descriptionIndex].toString().trim() : '',
+            list: listIndex !== -1 && row[listIndex] ? row[listIndex].toString().trim() : ''
           }
           results.push(subscriber)
-          console.log(`📊 [EXCEL] Contacto agregado: ${subscriber.email}`)
+          console.log(`📊 [EXCEL] Contacto agregado: ${subscriber.email} - Lista: ${subscriber.list || 'N/A'}`)
         } else {
           console.log(`⚠️ [EXCEL] Fila ${i} omitida - sin email válido`)
         }
