@@ -12,19 +12,6 @@ import { DateTime } from 'luxon'
 @inject()
 export default class SubscribersController {
   /**
-   * Obtener la lista predeterminada (isActivated = true) del tenant
-   */
-  private async getDefaultList(tenantId: number): Promise<number | null> {
-    const defaultList = await List.query()
-      .where('tenantId', tenantId)
-      .where('isActivated', true)
-      .where('status', 'active')
-      .first()
-    
-    return defaultList ? defaultList.id : null
-  }
-
-  /**
    * Crear lista automáticamente si no existe
    */
   private async createListIfNotExists(tenantId: number, tenantSlug: string, listName: string): Promise<number> {
@@ -45,8 +32,7 @@ export default class SubscribersController {
       name: listName,
       slug: tenantSlug,
       description: 'Lista creada automaticamente',
-      status: 'active',
-      isActivated: false
+      status: 'active'
     })
     
     console.log(`✅ [CREATE_LIST] Nueva lista creada: ${listName} (ID: ${newList.id}) con slug del tenant: ${tenantSlug}`)
@@ -264,10 +250,6 @@ export default class SubscribersController {
       // Asociar contactos con listas individuales
       console.log(`🔗 [STORE] Procesando asociaciones de listas para ${createdSubscribers.length} contactos...`)
       
-      // Obtener la lista predeterminada del tenant
-      const defaultListId = await this.getDefaultList(tenantUser.tenantId)
-      console.log(`🔗 [STORE] Lista predeterminada del tenant: ${defaultListId || 'No encontrada'}`)
-      
       // Verificar que las listas pertenezcan al tenant (obtener todas las listas válidas de una vez)
       const allListIds = new Set<number>()
       for (const contact of newContacts) {
@@ -276,7 +258,7 @@ export default class SubscribersController {
         }
       }
       
-      // Si hay listas específicas, validarlas; si no, usar la lista predeterminada
+      // Si hay listas específicas, validarlas
       let validListIds: number[] = []
       
       if (allListIds.size > 0) {
@@ -287,10 +269,6 @@ export default class SubscribersController {
         
         validListIds = validLists.map(list => list.id)
         console.log(`🔗 [STORE] Listas válidas encontradas: ${validListIds.join(', ')}`)
-      } else if (defaultListId) {
-        // Si no hay listas específicas pero hay lista predeterminada, usarla
-        validListIds = [defaultListId]
-        console.log(`🔗 [STORE] Usando lista predeterminada: ${defaultListId}`)
       }
       
       if (validListIds.length > 0) {
@@ -306,9 +284,6 @@ export default class SubscribersController {
           if (contact.listIds && contact.listIds.length > 0) {
             // Solo agregar listas que sean válidas para el tenant
             contactListIds = contact.listIds.filter(id => validListIds.includes(id))
-          } else if (defaultListId) {
-            // Si no tiene listas específicas, usar la lista predeterminada
-            contactListIds = [defaultListId]
           }
           
           for (const listId of contactListIds) {
@@ -808,11 +783,23 @@ export default class SubscribersController {
     try {
       console.log('📁 [IMPORT] Procesando archivo subido...')
       
-      // Obtener el archivo subido
+      // Obtener el archivo subido y las listas seleccionadas
       const file = request.file('file', {
         size: '15mb',
         extnames: ['csv', 'xls', 'xlsx']
       })
+
+      // Obtener las listas seleccionadas del frontend
+      const selectedListIds = request.input('listIds', '[]')
+      let importListIds: number[] = []
+      
+      try {
+        importListIds = JSON.parse(selectedListIds)
+        console.log(`📋 [IMPORT] Listas seleccionadas para importación: ${importListIds.join(', ')}`)
+      } catch (error) {
+        console.log('⚠️ [IMPORT] Error al parsear listIds, usando array vacío')
+        importListIds = []
+      }
 
       if (!file) {
         console.log('❌ [IMPORT] No se proporcionó archivo válido')
@@ -960,18 +947,27 @@ export default class SubscribersController {
 
       console.log(`✅ [IMPORT] Importación completada exitosamente: ${newSubscribers.length} contactos nuevos`)
 
-      // Asociar contactos importados con listas específicas o predeterminada
+      // Asociar contactos importados con listas específicas
       console.log(`🔗 [IMPORT] Asociando contactos importados con listas...`)
       
-      // Obtener la lista predeterminada del tenant
-      const defaultListId = await this.getDefaultList(tenantUser.tenantId)
-      console.log(`🔗 [IMPORT] Lista predeterminada del tenant: ${defaultListId || 'No encontrada'}`)
+      // Validar que las listas seleccionadas pertenezcan al tenant
+      let validImportListIds: number[] = []
       
-      // Procesar listas específicas del archivo
+      if (importListIds.length > 0) {
+        const validLists = await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .whereIn('id', importListIds)
+          .select('id')
+        
+        validImportListIds = validLists.map(list => list.id)
+        console.log(`🔗 [IMPORT] Listas válidas para importación: ${validImportListIds.join(', ')}`)
+      }
+      
+      // Procesar listas específicas del archivo (si las hay)
       const listNamesFromFile = [...new Set(newSubscribers.map(sub => sub.list).filter(list => list && list.trim()))]
       console.log(`🔗 [IMPORT] Listas encontradas en el archivo: ${listNamesFromFile.join(', ') || 'Ninguna'}`)
       
-      // Crear o obtener IDs de listas
+      // Crear o obtener IDs de listas del archivo
       const listIdMap = new Map<string, number>()
       
       for (const listName of listNamesFromFile) {
@@ -988,20 +984,21 @@ export default class SubscribersController {
         const subscriber = createdSubscribers[i]
         const originalSubscriber = newSubscribers[i]
         
-        let listId: number | null = null
+        const listIdsToAssign: number[] = []
         
-        // Si el contacto tiene lista específica en el archivo, usarla
+        // Agregar listas seleccionadas por el usuario
+        listIdsToAssign.push(...validImportListIds)
+        
+        // Agregar lista específica del archivo (si existe)
         if (originalSubscriber.list && originalSubscriber.list.trim()) {
-          listId = listIdMap.get(originalSubscriber.list.trim()) || null
+          const fileListId = listIdMap.get(originalSubscriber.list.trim())
+          if (fileListId && !listIdsToAssign.includes(fileListId)) {
+            listIdsToAssign.push(fileListId)
+          }
         }
         
-        // Si no tiene lista específica, usar la lista predeterminada
-        if (!listId && defaultListId) {
-          listId = defaultListId
-        }
-        
-        // Solo crear asociación si hay una lista válida
-        if (listId) {
+        // Crear asociaciones para todas las listas
+        for (const listId of listIdsToAssign) {
           subscriberListAssociations.push({
             subscriber_id: subscriber.id,
             list_id: listId,

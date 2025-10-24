@@ -86,7 +86,7 @@ templates_attachments (pivot_table)
   id, tennat_id, attachment_id, template_id, created_at, updated_at
 
 attachments
-- id, tennat_id, path, name, file_name
+- id, tennat_id, path, name, file_name, size
 
 subscribers
   - id, tenant_id, name, email, description

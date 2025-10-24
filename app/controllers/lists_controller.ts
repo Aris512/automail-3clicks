@@ -63,7 +63,7 @@ export default class ListsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status', 'is_activated'])
+    const data = request.only(['name', 'description', 'status'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -86,20 +86,11 @@ export default class ListsController {
     const finalSlug = tenant.slug
 
     try {
-      // Si se está activando esta lista, desactivar todas las demás del tenant
-      if (data.is_activated) {
-        await List.query()
-          .where('tenantId', tenantUser.tenantId)
-          .where('isActivated', true)
-          .update({ isActivated: false })
-      }
-
       const list = await List.create({
         name: data.name.trim(),
         slug: finalSlug,
         description: data.description?.trim() || '',
         status: data.status || 'active',
-        isActivated: data.is_activated || false,
         tenantId: tenantUser.tenantId
       })
 
@@ -201,7 +192,7 @@ export default class ListsController {
       .where('tenantId', tenantUser.tenantId)
       .firstOrFail()
     
-    const data = request.only(['name', 'description', 'status', 'is_activated'])
+    const data = request.only(['name', 'description', 'status'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -224,21 +215,11 @@ export default class ListsController {
     const finalSlug = tenant.slug
 
     try {
-      // Si se está activando esta lista, desactivar todas las demás del tenant
-      if (data.is_activated && !list.isActivated) {
-        await List.query()
-          .where('tenantId', tenantUser.tenantId)
-          .where('isActivated', true)
-          .where('id', '!=', params.id)
-          .update({ isActivated: false })
-      }
-
       list.merge({
         name: data.name.trim(),
         slug: finalSlug,
         description: data.description?.trim() || '',
-        status: data.status || 'active',
-        isActivated: data.is_activated !== undefined ? data.is_activated : list.isActivated
+        status: data.status || 'active'
       })
       await list.save()
 
@@ -296,57 +277,6 @@ export default class ListsController {
     }
   }
 
-  /**
-   * Activar/Desactivar una lista (toggle)
-   */
-  async toggleActivation({ params, response, auth }: HttpContext) {
-    const user = auth.user!
-    
-    // Obtener el tenant del usuario
-    const tenantUser = await TenantUser.query()
-      .where('userId', user.id)
-      .where('active', true)
-      .first()
-
-    if (!tenantUser) {
-      return response.status(400).json({
-        success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo'
-      })
-    }
-
-    try {
-      const list = await List.query()
-        .where('id', params.id)
-        .where('tenantId', tenantUser.tenantId)
-        .firstOrFail()
-
-      // Si se está activando esta lista, desactivar todas las demás del tenant
-      if (!list.isActivated) {
-        await List.query()
-          .where('tenantId', tenantUser.tenantId)
-          .where('isActivated', true)
-          .where('id', '!=', params.id)
-          .update({ isActivated: false })
-      }
-
-      // Toggle del estado de activación
-      list.isActivated = !list.isActivated
-      await list.save()
-
-      return response.status(200).json({
-        success: true,
-        message: list.isActivated ? 'Lista activada como predeterminada' : 'Lista desactivada',
-        data: list
-      })
-    } catch (error) {
-      console.error('Error al cambiar estado de activación:', error)
-      return response.status(500).json({
-        success: false,
-        message: 'Error al cambiar el estado de activación'
-      })
-    }
-  }
 
   /**
    * Obtener contactos de una lista específica

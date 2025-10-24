@@ -3,7 +3,7 @@ import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, CheckCircle, Circle, Eye } from 'lucide-react'
+import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, Eye } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 interface User {
@@ -28,7 +28,6 @@ interface ListItem {
   slug: string
   description?: string
   status: 'active' | 'inactive' | 'archived'
-  isActivated: boolean
   createdAt: string
 }
 
@@ -62,6 +61,8 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   const [isUploading, setIsUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [dragActive, setDragActive] = useState(false)
+  const [importSelectedListIds, setImportSelectedListIds] = useState<number[]>([])
+  const [showImportConfirm, setShowImportConfirm] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Estados para agregar contactos manualmente
@@ -71,17 +72,17 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     email: string
     description: string
     status: 'active' | 'inactive' | 'archived'
-    listId: number | null
+    listIds: number[]
   }>>([{
     id: '1',
     name: '',
     email: '',
     description: '',
     status: 'active',
-    listId: null
+    listIds: []
   }])
   const [isSavingManual, setIsSavingManual] = useState(false)
-  const [editSelectedListId, setEditSelectedListId] = useState<number | null>(null)
+  const [editSelectedListIds, setEditSelectedListIds] = useState<number[]>([])
 
   // Estados para gestión de listas
   const [editingList, setEditingList] = useState<ListItem | null>(null)
@@ -158,8 +159,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   const { data: listData, setData: setListData, errors: listErrors, reset: resetList } = useForm({
     name: '',
     description: '',
-    status: 'active',
-    is_activated: false
+    status: 'active'
   })
 
   // Función para abrir modal de vista
@@ -196,16 +196,28 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       description: subscriber.description || '',
       status: subscriber.status
     })
-    // Cargar la primera lista del contacto (o null si no tiene listas)
-    const firstListId = subscriber.lists && subscriber.lists.length > 0 ? subscriber.lists[0].id : null
-    setEditSelectedListId(firstListId)
+    // Cargar todas las listas del contacto
+    const listIds = subscriber.lists ? subscriber.lists.map(list => list.id) : []
+    setEditSelectedListIds(listIds)
   }
 
   // Función para cerrar modal de edición
   const handleCloseEdit = () => {
     setEditingSubscriber(null)
     resetEdit()
-    setEditSelectedListId(null)
+    setEditSelectedListIds([])
+  }
+
+  const toggleEditListSelection = (listId: number) => {
+    const isSelected = editSelectedListIds.includes(listId)
+    
+    if (isSelected) {
+      // Remover la lista si ya está seleccionada
+      setEditSelectedListIds(editSelectedListIds.filter(id => id !== listId))
+    } else {
+      // Agregar la lista si no está seleccionada
+      setEditSelectedListIds([...editSelectedListIds, listId])
+    }
   }
 
   // Función para enviar formulario de edición
@@ -228,7 +240,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
         },
         body: JSON.stringify({
           ...editData,
-          listIds: editSelectedListId ? [editSelectedListId] : []
+          listIds: editSelectedListIds
         })
       })
       .then(response => response.json())
@@ -246,8 +258,8 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     email: editData.email,
                     description: editData.description,
                     status: editData.status as 'active' | 'inactive' | 'archived',
-                    lists: editSelectedListId ? 
-                      currentLists.filter(list => list.id === editSelectedListId) : 
+                    lists: editSelectedListIds.length > 0 ? 
+                      currentLists.filter(list => editSelectedListIds.includes(list.id)) : 
                       []
                   }
                 : subscriber
@@ -316,6 +328,18 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   }
 
   // Funciones para manejo de archivos
+  const toggleImportListSelection = (listId: number) => {
+    const isSelected = importSelectedListIds.includes(listId)
+    
+    if (isSelected) {
+      // Remover la lista si ya está seleccionada
+      setImportSelectedListIds(importSelectedListIds.filter(id => id !== listId))
+    } else {
+      // Agregar la lista si no está seleccionada
+      setImportSelectedListIds([...importSelectedListIds, listId])
+    }
+  }
+
   const handleFileSelect = (file: File) => {
     // Validar tipo de archivo
     const allowedTypes = ['text/csv', 'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']
@@ -374,12 +398,26 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       return
     }
 
+    // Verificar si se han seleccionado listas
+    if (importSelectedListIds.length === 0) {
+      setShowImportConfirm(true)
+      return
+    }
+
+    // Proceder con la importación
+    await performImport()
+  }
+
+  const performImport = async () => {
     setIsUploading(true)
     setUploadProgress(0)
 
     try {
       const formData = new FormData()
-      formData.append('file', selectedFile)
+      if (selectedFile) {
+        formData.append('file', selectedFile)
+      }
+      formData.append('listIds', JSON.stringify(importSelectedListIds))
 
       // Simular progreso
       const progressInterval = setInterval(() => {
@@ -424,8 +462,9 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
           message: successMessage
         })
         
-        // Limpiar archivo seleccionado
+        // Limpiar archivo seleccionado y listas
         setSelectedFile(null)
+        setImportSelectedListIds([])
         if (fileInputRef.current) {
           fileInputRef.current.value = ''
         }
@@ -458,9 +497,19 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
 
   const clearSelectedFile = () => {
     setSelectedFile(null)
+    setImportSelectedListIds([])
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
+  }
+
+  const confirmImportWithoutLists = async () => {
+    setShowImportConfirm(false)
+    await performImport()
+  }
+
+  const cancelImportWithoutLists = () => {
+    setShowImportConfirm(false)
   }
 
   // Funciones para manejo de contactos manuales
@@ -472,7 +521,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       email: '',
       description: '',
       status: 'active',
-      listId: null
+      listIds: []
     }])
   }
 
@@ -482,7 +531,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     }
   }
 
-  const updateManualContact = (id: string, field: string, value: string | number) => {
+  const updateManualContact = (id: string, field: string, value: string | number | number[]) => {
     setManualContacts(manualContacts.map(contact => 
       contact.id === id ? { ...contact, [field]: value } : contact
     ))
@@ -495,8 +544,26 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       email: '',
       description: '',
       status: 'active',
-      listId: null
+      listIds: []
     }])
+  }
+
+  const toggleListSelection = (contactId: string, listId: number) => {
+    setManualContacts(manualContacts.map(contact => {
+      if (contact.id === contactId) {
+        const currentListIds = contact.listIds
+        const isSelected = currentListIds.includes(listId)
+        
+        if (isSelected) {
+          // Remover la lista si ya está seleccionada
+          return { ...contact, listIds: currentListIds.filter(id => id !== listId) }
+        } else {
+          // Agregar la lista si no está seleccionada
+          return { ...contact, listIds: [...currentListIds, listId] }
+        }
+      }
+      return contact
+    }))
   }
 
   const handleManualSubmit = async () => {
@@ -542,7 +609,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
             email: contact.email,
             description: contact.description,
             status: contact.status,
-            listIds: contact.listId ? [contact.listId] : []
+            listIds: contact.listIds
           }))
         })
       })
@@ -617,8 +684,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     setListData({
       name: list.name,
       description: list.description || '',
-      status: list.status,
-      is_activated: list.isActivated
+      status: list.status
     })
   }
 
@@ -672,52 +738,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       setTimeout(() => setNotification(null), 10000)
     } finally {
       setIsSavingList(false)
-    }
-  }
-
-  const handleToggleActivation = async (list: ListItem) => {
-    try {
-      const response = await fetch(`/lists/${list.id}/toggle-activation`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
-        }
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        // Actualizar la lista local
-        setCurrentLists(prevLists => 
-          prevLists.map(l => 
-            l.id === list.id 
-              ? { ...l, isActivated: !l.isActivated }
-              : l.isActivated 
-                ? { ...l, isActivated: false } // Desactivar otras listas
-                : l
-          )
-        )
-        
-        setNotification({ 
-          type: 'success', 
-          message: result.message 
-        })
-        setTimeout(() => setNotification(null), 3000)
-      } else {
-        setNotification({ 
-          type: 'error', 
-          message: result.message 
-        })
-        setTimeout(() => setNotification(null), 10000)
-      }
-    } catch (error) {
-      console.error('Error al cambiar estado de activación:', error)
-      setNotification({ 
-        type: 'error', 
-        message: 'Error al cambiar el estado de activación' 
-      })
-      setTimeout(() => setNotification(null), 10000)
     }
   }
 
@@ -955,29 +975,44 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                               </select>
                             </td>
                             <td className="px-3 py-3">
-                              <select
-                                value={contact.listId || ''}
-                                onChange={(e) => {
-                                  if (e.target.value === 'create_new') {
-                                    handleCreateNewList()
-                                    return
-                                  }
-                                  const value = e.target.value ? parseInt(e.target.value) : null
-                                  updateManualContact(contact.id, 'listId', value as any)
-                                }}
-                                className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
-                              >
-                                <option value="">Seleccionar lista</option>
-                                {currentLists.map((list) => (
-                                  <option key={list.id} value={list.id}>
-                                    {list.name}
-                                    {list.isActivated && ' (Predeterminada)'}
-                                  </option>
-                                ))}
-                                <option value="create_new" className="text-orange-600 font-medium">
-                                  ➕ Crear lista nueva
-                                </option>
-                              </select>
+                              <div className="relative">
+                                <div className="text-xs text-gray-500 mb-2 font-medium">Listas</div>
+                                <div className="border border-gray-200 rounded-lg bg-white">
+                                  <div className="max-h-24 overflow-y-auto p-2">
+                                    {currentLists.length > 0 ? (
+                                      <div className="space-y-1">
+                                        {currentLists.map((list) => (
+                                          <label key={list.id} className="flex items-center space-x-2 text-xs cursor-pointer hover:bg-gray-50 p-1 rounded transition-colors">
+                                            <input
+                                              type="checkbox"
+                                              checked={contact.listIds.includes(list.id)}
+                                              onChange={() => toggleListSelection(contact.id, list.id)}
+                                              className="rounded border-gray-300 text-orange-600 focus:ring-orange-500 w-3 h-3"
+                                            />
+                                            <span className="text-gray-700 truncate">{list.name}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    ) : (
+                                      <div className="text-xs text-gray-400 italic text-center py-2">Sin listas</div>
+                                    )}
+                                  </div>
+                                  <div className="border-t border-gray-100 px-2 py-1">
+                                    <button
+                                      type="button"
+                                      onClick={handleCreateNewList}
+                                      className="text-xs text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                                    >
+                                      ➕ Nueva lista
+                                    </button>
+                                  </div>
+                                </div>
+                                {contact.listIds.length > 0 && (
+                                  <div className="mt-1 text-xs text-gray-500">
+                                    {contact.listIds.length} lista{contact.listIds.length !== 1 ? 's' : ''} seleccionada{contact.listIds.length !== 1 ? 's' : ''}
+                                  </div>
+                                )}
+                              </div>
                             </td>
                             <td className="px-3 py-3 text-center">
                               <button
@@ -1023,7 +1058,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                   <div className="mt-4 text-xs text-gray-500">
                     <p>• Los campos marcados con * son obligatorios</p>
                     <p>• Puedes agregar múltiples filas usando el botón "Agregar Fila"</p>
-                    <p>• Cada contacto puede tener su propia lista asignada</p>
+                    <p>• Cada contacto puede ser asignado a múltiples listas usando los checkboxes</p>
                     <p>• Se validarán los emails antes de guardar</p>
                     <p>• Los emails duplicados se omitirán automáticamente</p>
                   </div>
@@ -1034,6 +1069,72 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
             {/* Import Tab */}
             {activeTab === 'import' && (
               <div className="space-y-6">
+                {/* Selector de listas para importación */}
+                <div className="bg-white border border-gray-200 rounded-lg p-4">
+                  <h4 className="text-sm font-medium text-gray-900 mb-3">Asignar a Listas</h4>
+                  <div className="space-y-3">
+                    <div className="text-xs text-gray-600 mb-2">
+                      Selecciona las listas a las que se asignarán los contactos importados:
+                    </div>
+                    <div className="border border-gray-200 rounded-lg bg-white">
+                      <div className="max-h-32 overflow-y-auto p-3">
+                        {currentLists.length > 0 ? (
+                          <div className="space-y-2">
+                            {currentLists.map((list) => (
+                              <label key={list.id} className="flex items-center space-x-3 text-sm cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={importSelectedListIds.includes(list.id)}
+                                  onChange={() => toggleImportListSelection(list.id)}
+                                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <div className="flex-1">
+                                  <span className="text-gray-900 font-medium">{list.name}</span>
+                                  {list.description && (
+                                    <p className="text-xs text-gray-500 mt-1">{list.description}</p>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-4">
+                            <div className="text-gray-400 mb-2">
+                              <svg className="w-6 h-6 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-2">No hay listas disponibles</p>
+                            <button
+                              type="button"
+                              onClick={handleCreateNewList}
+                              className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+                            >
+                              Crear primera lista
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {currentLists.length > 0 && (
+                        <div className="border-t border-gray-100 px-3 py-2 bg-gray-50 rounded-b-lg">
+                          <button
+                            type="button"
+                            onClick={handleCreateNewList}
+                            className="text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                          >
+                            ➕ Crear nueva lista
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {importSelectedListIds.length > 0 && (
+                      <div className="text-sm text-gray-600">
+                        <span className="font-medium">{importSelectedListIds.length}</span> lista{importSelectedListIds.length !== 1 ? 's' : ''} seleccionada{importSelectedListIds.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
                 <div className="bg-white rounded-lg shadow-sm border p-6">
                   <h3 className="text-lg font-semibold text-gray-900 mb-4">Importar Contactos desde Archivo</h3>
                   <div className="space-y-6">
@@ -1241,9 +1342,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                             Estado
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Activada
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Fecha
                           </th>
                           <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1279,15 +1377,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                               </span>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
-                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                                list.isActivated 
-                                  ? 'bg-blue-100 text-blue-800' 
-                                  : 'bg-gray-100 text-gray-500'
-                              }`}>
-                                {list.isActivated ? 'Predeterminada' : 'No activada'}
-                              </span>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
                               <div className="flex items-center text-sm text-gray-900">
                                 <Calendar className="h-4 w-4 text-gray-400 mr-2" />
                                 {new Date(list.createdAt).toLocaleDateString()}
@@ -1308,13 +1397,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                                   title="Editar lista"
                                 >
                                   <Edit className="h-4 w-4" />
-                                </button>
-                                <button 
-                                  onClick={() => handleToggleActivation(list)}
-                                  className={`${list.isActivated ? 'text-green-600 hover:text-green-900' : 'text-blue-600 hover:text-blue-900'}`}
-                                  title={list.isActivated ? 'Desactivar como predeterminada' : 'Activar como predeterminada'}
-                                >
-                                  {list.isActivated ? <CheckCircle className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
                                 </button>
                                 <button 
                                   onClick={() => handleDeleteList(list)}
@@ -1454,17 +1536,9 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                               subscriber.lists.map((list) => (
                                 <span
                                   key={list.id}
-                                  className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                                    list.isActivated 
-                                      ? 'bg-green-100 text-green-800 border border-green-200' 
-                                      : 'bg-blue-100 text-blue-800'
-                                  }`}
-                                  title={list.isActivated ? 'Lista predeterminada' : 'Lista normal'}
+                                  className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800"
                                 >
                                   {list.name}
-                                  {list.isActivated && (
-                                    <span className="ml-1">⭐</span>
-                                  )}
                                 </span>
                               ))
                             ) : (
@@ -1602,29 +1676,69 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     </select>
                   </div>
                   
-                  {/* Selección de lista */}
+                  {/* Selección de múltiples listas */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Lista Asignada
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Listas Asignadas
                     </label>
-                    <select
-                      value={editSelectedListId || ''}
-                      onChange={(e) => {
-                        const value = e.target.value ? parseInt(e.target.value) : null
-                        setEditSelectedListId(value)
-                      }}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
-                    >
-                      <option value="">Seleccionar lista</option>
-                      {currentLists.map((list) => (
-                        <option key={list.id} value={list.id}>
-                          {list.name}
-                          {list.isActivated && ' (Predeterminada)'}
-                        </option>
-                      ))}
-                    </select>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Selecciona una lista para asignar al contacto
+                    <div className="border border-gray-200 rounded-lg bg-white shadow-sm">
+                      <div className="max-h-48 overflow-y-auto p-3">
+                        {currentLists.length > 0 ? (
+                          <div className="space-y-2">
+                            {currentLists.map((list) => (
+                              <label key={list.id} className="flex items-center space-x-3 text-sm cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors">
+                                <input
+                                  type="checkbox"
+                                  checked={editSelectedListIds.includes(list.id)}
+                                  onChange={() => toggleEditListSelection(list.id)}
+                                  className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                                />
+                                <div className="flex-1">
+                                  <span className="text-gray-900 font-medium">{list.name}</span>
+                                  {list.description && (
+                                    <p className="text-xs text-gray-500 mt-1">{list.description}</p>
+                                  )}
+                                </div>
+                              </label>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-center py-8">
+                            <div className="text-gray-400 mb-2">
+                              <svg className="w-8 h-8 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                              </svg>
+                            </div>
+                            <p className="text-sm text-gray-500 mb-3">No hay listas disponibles</p>
+                            <button
+                              type="button"
+                              onClick={handleCreateNewList}
+                              className="text-sm text-orange-600 hover:text-orange-700 font-medium"
+                            >
+                              Crear primera lista
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      {currentLists.length > 0 && (
+                        <div className="border-t border-gray-100 px-3 py-2 bg-gray-50 rounded-b-lg">
+                          <button
+                            type="button"
+                            onClick={handleCreateNewList}
+                            className="text-sm text-orange-600 hover:text-orange-700 font-medium transition-colors"
+                          >
+                            ➕ Crear nueva lista
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {editSelectedListIds.length > 0 && (
+                      <div className="mt-2 text-sm text-gray-600">
+                        <span className="font-medium">{editSelectedListIds.length}</span> lista{editSelectedListIds.length !== 1 ? 's' : ''} seleccionada{editSelectedListIds.length !== 1 ? 's' : ''}
+                      </div>
+                    )}
+                    <p className="text-xs text-gray-500 mt-2">
+                      Selecciona una o más listas para asignar al contacto
                     </p>
                   </div>
                   
@@ -1703,21 +1817,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                           : 'bg-red-100 text-red-800'
                       }`}>
                         {viewingList.status === 'active' ? 'Activa' : 'Inactiva'}
-                      </span>
-                    </div>
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Lista Predeterminada
-                    </label>
-                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
-                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                        viewingList.isActivated 
-                          ? 'bg-green-100 text-green-800' 
-                          : 'bg-gray-100 text-gray-800'
-                      }`}>
-                        {viewingList.isActivated ? 'Sí (Predeterminada)' : 'No'}
                       </span>
                     </div>
                   </div>
@@ -1819,17 +1918,9 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                           viewingSubscriber.lists.map((list) => (
                             <span
                               key={list.id}
-                              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
-                                list.isActivated 
-                                  ? 'bg-green-100 text-green-800 border border-green-200' 
-                                  : 'bg-blue-100 text-blue-800'
-                              }`}
-                              title={list.isActivated ? 'Lista predeterminada' : 'Lista normal'}
+                              className="inline-flex px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800"
                             >
                               {list.name}
-                              {list.isActivated && (
-                                <span className="ml-1">⭐</span>
-                              )}
                             </span>
                           ))
                         ) : (
@@ -1929,9 +2020,12 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     <Trash2 className="h-6 w-6 text-red-600" />
                   </div>
                   <div>
-                    <p className="text-gray-900 font-medium">¿Estás seguro de que quieres eliminar esta lista?</p>
+                    <p className="text-gray-900 font-medium">¿Estás seguro de eliminar esta lista?</p>
                     <p className="text-sm text-gray-600 mt-1">
-                      <strong>{showDeleteListConfirm.list.name}</strong>
+                      Puede afectar a varios suscriptores
+                    </p>
+                    <p className="text-sm text-gray-500 mt-2">
+                      Lista: <strong>{showDeleteListConfirm.list.name}</strong>
                     </p>
                   </div>
                 </div>
@@ -2022,23 +2116,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                       <option value="archived">Archivada</option>
                     </select>
                   </div>
-                  
-                  <div>
-                    <label className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        checked={listData.is_activated}
-                        onChange={(e) => setListData('is_activated', e.target.checked)}
-                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                      />
-                      <span className="text-sm font-medium text-gray-700">
-                        Lista por Defecto
-                      </span>
-                    </label>
-                    <p className="text-xs text-gray-500 mt-1">
-                      Marca esta opción para la lista por defecto para campañas
-                    </p>
-                  </div>
                 </div>
                 
                 <div className="flex justify-end space-x-3 mt-6">
@@ -2062,6 +2139,50 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación para importar sin listas */}
+        {showImportConfirm && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="flex-shrink-0">
+                  <svg className="w-8 h-8 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900">Confirmar Importación</h3>
+                  <p className="text-sm text-gray-500">Sin lista asignada</p>
+                </div>
+              </div>
+              
+              <div className="mb-6">
+                <p className="text-gray-700">
+                  No has seleccionado ninguna lista para asignar a los contactos importados. 
+                  Los contactos se importarán <strong>sin estar asignados a ninguna lista</strong>.
+                </p>
+                <p className="text-sm text-gray-600 mt-2">
+                  ¿Estás seguro de que quieres continuar con la importación?
+                </p>
+              </div>
+
+              <div className="flex justify-end space-x-3">
+                <button
+                  onClick={cancelImportWithoutLists}
+                  className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-lg transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmImportWithoutLists}
+                  className="px-4 py-2 text-sm font-medium text-white bg-orange-600 hover:bg-orange-700 rounded-lg transition-colors"
+                >
+                  Importar Sin Lista
+                </button>
+              </div>
             </div>
           </div>
         )}
