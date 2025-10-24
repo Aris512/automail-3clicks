@@ -8,7 +8,7 @@ export default class ListsController {
   /**
    * Display una lista de listas
    */
-  async index({ auth, inertia }: HttpContext) {
+  async index({ auth, response }: HttpContext) {
     const user = auth.user!
     
     // Obtener el tenant del usuario
@@ -18,9 +18,10 @@ export default class ListsController {
       .first()
 
     if (!tenantUser) {
-      return inertia.render('auth/lists/index', {
-        user: auth.user,
-        lists: []
+      return response.json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo',
+        data: []
       })
     }
 
@@ -28,9 +29,9 @@ export default class ListsController {
       .where('tenantId', tenantUser.tenantId)
       .orderBy('createdAt', 'desc')
     
-    return inertia.render('auth/lists/index', {
-      user: auth.user,
-      lists
+    return response.json({
+      success: true,
+      data: lists
     })
   }
 
@@ -56,20 +57,74 @@ export default class ListsController {
       .first()
 
     if (!tenantUser) {
-      return response.badRequest({
+      return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
     }
 
-    const data = request.only(['name', 'slug', 'description', 'status'])
+    const data = request.only(['name', 'slug', 'description', 'status', 'is_activated'])
     
-    await List.create({
-      ...data,
-      tenantId: tenantUser.tenantId
-    })
-    
-    return response.redirect().back()
+    // Validaciones básicas
+    if (!data.name || !data.name.trim()) {
+      return response.status(400).json({
+        success: false,
+        message: 'El nombre de la lista es requerido'
+      })
+    }
+
+    // Generar slug automáticamente si no se proporciona
+    let slug = data.slug?.trim()
+    if (!slug) {
+      slug = data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '') // Remover caracteres especiales
+        .replace(/\s+/g, '-') // Reemplazar espacios con guiones
+        .replace(/-+/g, '-') // Reemplazar múltiples guiones con uno solo
+        .trim()
+    }
+
+    // Verificar que el slug sea único en el tenant
+    let finalSlug = slug
+    let counter = 1
+    while (await List.query()
+      .where('tenantId', tenantUser.tenantId)
+      .where('slug', finalSlug)
+      .first()) {
+      finalSlug = `${slug}-${counter}`
+      counter++
+    }
+
+    try {
+      // Si se está activando esta lista, desactivar todas las demás del tenant
+      if (data.is_activated) {
+        await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .where('isActivated', true)
+          .update({ isActivated: false })
+      }
+
+      const list = await List.create({
+        name: data.name.trim(),
+        slug: finalSlug,
+        description: data.description?.trim() || '',
+        status: data.status || 'active',
+        isActivated: data.is_activated || false,
+        tenantId: tenantUser.tenantId
+      })
+
+      return response.status(201).json({
+        success: true,
+        message: 'Lista creada exitosamente',
+        data: list
+      })
+    } catch (error) {
+      console.error('Error al crear lista:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al crear la lista'
+      })
+    }
   }
 
   /**
@@ -145,7 +200,7 @@ export default class ListsController {
       .first()
 
     if (!tenantUser) {
-      return response.badRequest({
+      return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
@@ -156,12 +211,70 @@ export default class ListsController {
       .where('tenantId', tenantUser.tenantId)
       .firstOrFail()
     
-    const data = request.only(['name', 'slug', 'description', 'status'])
+    const data = request.only(['name', 'slug', 'description', 'status', 'is_activated'])
     
-    list.merge(data)
-    await list.save()
-    
-    return response.redirect().back()
+    // Validaciones básicas
+    if (!data.name || !data.name.trim()) {
+      return response.status(400).json({
+        success: false,
+        message: 'El nombre de la lista es requerido'
+      })
+    }
+
+    // Generar slug automáticamente si no se proporciona
+    let slug = data.slug?.trim()
+    if (!slug) {
+      slug = data.name
+        .toLowerCase()
+        .replace(/[^a-z0-9\s-]/g, '') // Remover caracteres especiales
+        .replace(/\s+/g, '-') // Reemplazar espacios con guiones
+        .replace(/-+/g, '-') // Reemplazar múltiples guiones con uno solo
+        .trim()
+    }
+
+    // Verificar que el slug sea único en el tenant (excluyendo la lista actual)
+    let finalSlug = slug
+    let counter = 1
+    while (await List.query()
+      .where('tenantId', tenantUser.tenantId)
+      .where('slug', finalSlug)
+      .where('id', '!=', params.id)
+      .first()) {
+      finalSlug = `${slug}-${counter}`
+      counter++
+    }
+
+    try {
+      // Si se está activando esta lista, desactivar todas las demás del tenant
+      if (data.is_activated && !list.isActivated) {
+        await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .where('isActivated', true)
+          .where('id', '!=', params.id)
+          .update({ isActivated: false })
+      }
+
+      list.merge({
+        name: data.name.trim(),
+        slug: finalSlug,
+        description: data.description?.trim() || '',
+        status: data.status || 'active',
+        isActivated: data.is_activated !== undefined ? data.is_activated : list.isActivated
+      })
+      await list.save()
+
+      return response.status(200).json({
+        success: true,
+        message: 'Lista actualizada exitosamente',
+        data: list
+      })
+    } catch (error) {
+      console.error('Error al actualizar lista:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al actualizar la lista'
+      })
+    }
   }
 
   /**
@@ -177,20 +290,83 @@ export default class ListsController {
       .first()
 
     if (!tenantUser) {
-      return response.badRequest({
+      return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
     }
 
-    const list = await List.query()
-      .where('id', params.id)
-      .where('tenantId', tenantUser.tenantId)
-      .firstOrFail()
+    try {
+      const list = await List.query()
+        .where('id', params.id)
+        .where('tenantId', tenantUser.tenantId)
+        .firstOrFail()
+      
+      await list.delete()
+      
+      return response.status(200).json({
+        success: true,
+        message: 'Lista eliminada exitosamente'
+      })
+    } catch (error) {
+      console.error('Error al eliminar lista:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al eliminar la lista'
+      })
+    }
+  }
+
+  /**
+   * Activar/Desactivar una lista (toggle)
+   */
+  async toggleActivation({ params, response, auth }: HttpContext) {
+    const user = auth.user!
     
-    await list.delete()
-    
-    return response.redirect().back()
+    // Obtener el tenant del usuario
+    const tenantUser = await TenantUser.query()
+      .where('userId', user.id)
+      .where('active', true)
+      .first()
+
+    if (!tenantUser) {
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
+    }
+
+    try {
+      const list = await List.query()
+        .where('id', params.id)
+        .where('tenantId', tenantUser.tenantId)
+        .firstOrFail()
+
+      // Si se está activando esta lista, desactivar todas las demás del tenant
+      if (!list.isActivated) {
+        await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .where('isActivated', true)
+          .where('id', '!=', params.id)
+          .update({ isActivated: false })
+      }
+
+      // Toggle del estado de activación
+      list.isActivated = !list.isActivated
+      await list.save()
+
+      return response.status(200).json({
+        success: true,
+        message: list.isActivated ? 'Lista activada como predeterminada' : 'Lista desactivada',
+        data: list
+      })
+    } catch (error) {
+      console.error('Error al cambiar estado de activación:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al cambiar el estado de activación'
+      })
+    }
   }
 
   /**

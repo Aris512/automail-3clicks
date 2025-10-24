@@ -14,6 +14,7 @@ export default class extends BaseSchema {
       table
         .integer('owner_id')
         .unsigned()
+        .notNullable()
         .references('id')
         .inTable('users')
         .onDelete('SET NULL')

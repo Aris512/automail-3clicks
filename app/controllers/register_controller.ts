@@ -81,6 +81,7 @@ export default class RegisterController {
       const tenant = await Tenant.create({
         name: data.organization_name,
         slug: slug,
+        ownerId: user.id,
       })
 
       await TenantUser.create({

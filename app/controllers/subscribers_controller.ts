@@ -1,6 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Subscriber from '#models/subscriber'
 import TenantUser from '#models/tenant_user'
+import List from '#models/list'
 import { inject } from '@adonisjs/core'
 import XLSX from 'xlsx'
 import csv from 'csv-parser'
@@ -23,17 +24,23 @@ export default class SubscribersController {
     if (!tenantUser) {
       return inertia.render('auth/contactos', {
         user: auth.user,
-        subscribers: []
+        subscribers: [],
+        lists: []
       })
     }
 
     const subscribers = await Subscriber.query()
       .where('tenantId', tenantUser.tenantId)
       .orderBy('createdAt', 'desc')
+
+    const lists = await List.query()
+      .where('tenantId', tenantUser.tenantId)
+      .orderBy('createdAt', 'desc')
     
     return inertia.render('auth/contactos', {
       user: auth.user,
       subscribers,
+      lists,
       flash: {
         success: session.get('success'),
         error: session.get('error')
@@ -145,7 +152,7 @@ export default class SubscribersController {
         console.log(`❌ [STORE] Emails duplicados en solicitud: ${duplicateEmails.join(', ')}`)
         return response.status(400).json({
           success: false,
-          message: `Se encontraron emails duplicados en la solicitud: ${duplicateEmails.join(', ')}`
+          message: 'hay correos duplicados'
         })
       }
 
@@ -177,20 +184,9 @@ export default class SubscribersController {
         const duplicateEmails = duplicateContacts.map(contact => contact.email)
         console.log(`❌ [STORE] Emails duplicados: ${duplicateEmails.join(', ')}`)
         
-        // Si es un solo contacto duplicado, mensaje específico
-        if (duplicateContacts.length === 1) {
-          return response.status(409).json({
-            success: false,
-            message: `${duplicateContacts[0].email} ya está en la lista de contactos`,
-            duplicateEmail: duplicateContacts[0].email
-          })
-        }
-        
-        // Si son múltiples contactos duplicados
         return response.status(409).json({
           success: false,
-          message: `Los siguientes emails ya están en la lista de contactos: ${duplicateEmails.join(', ')}`,
-          duplicateEmails: duplicateEmails
+          message: 'hay correos duplicados'
         })
       }
       
@@ -755,7 +751,7 @@ export default class SubscribersController {
         console.log(`❌ [IMPORT] Emails duplicados en archivo: ${duplicateEmails.join(', ')}`)
         return response.status(400).json({
           success: false,
-          message: `Se encontraron emails duplicados en el archivo: ${duplicateEmails.join(', ')}`
+          message: 'hay correos duplicados'
         })
       }
 

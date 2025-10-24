@@ -186,6 +186,7 @@ router.post('/lists', [ListsController, 'store']).use(middleware.auth())
 router.get('/lists/:id', [ListsController, 'show']).use(middleware.auth())
 router.put('/lists/:id', [ListsController, 'update']).use(middleware.auth())
 router.delete('/lists/:id', [ListsController, 'destroy']).use(middleware.auth())
+router.put('/lists/:id/toggle-activation', [ListsController, 'toggleActivation']).use(middleware.auth())
 router.get('/lists/:id/subscribers', [ListsController, 'subscribers']).use(middleware.auth())
 
 // Rutas para relaciones contacto-lista

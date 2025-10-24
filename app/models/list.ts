@@ -24,6 +24,9 @@ export default class List extends BaseModel {
   declare status: 'active' | 'inactive' | 'archived'
 
   @column()
+  declare isActivated: boolean
+
+  @column()
   declare createdBy?: number
 
   @column.dateTime({ autoCreate: true })

@@ -17,6 +17,8 @@ export default class extends BaseSchema {
       table.string('name').notNullable()
       table.string('slug').notNullable()
       table.text('description').nullable()
+      table.enum('status', ['active', 'inactive', 'archived']).notNullable().defaultTo('active')
+      table.boolean('is_activated').notNullable().defaultTo(false)
 
       table
       .integer('created_by')

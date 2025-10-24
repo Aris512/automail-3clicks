@@ -3,7 +3,7 @@ import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle } from 'lucide-react'
+import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, CheckCircle, Circle } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 interface User {
@@ -21,24 +21,38 @@ interface Subscriber {
   createdAt: string
 }
 
+interface ListItem {
+  id: number
+  name: string
+  slug: string
+  description?: string
+  status: 'active' | 'inactive' | 'archived'
+  isActivated: boolean
+  createdAt: string
+}
+
 interface ContactosProps {
   user: User
   subscribers?: Subscriber[]
+  lists?: ListItem[]
   flash?: {
     success?: string
     error?: string
   }
 }
 
-export default function Contactos({ user, subscribers = [], flash }: ContactosProps) {
+export default function Contactos({ user, subscribers = [], lists = [], flash }: ContactosProps) {
   const { toasts, showError, removeToast } = useToast()
-  const [activeTab, setActiveTab] = useState<'manual' | 'import'>('manual')
+  const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'lists'>('manual')
   const [searchTerm, setSearchTerm] = useState('')
+  const [listSearchTerm, setListSearchTerm] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
   const [currentSubscribers, setCurrentSubscribers] = useState<Subscriber[]>(subscribers)
+  const [currentLists, setCurrentLists] = useState<ListItem[]>(lists)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isRefreshingLists, setIsRefreshingLists] = useState(false)
   
   // Estados para importación
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -62,6 +76,12 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     status: 'active'
   }])
   const [isSavingManual, setIsSavingManual] = useState(false)
+
+  // Estados para gestión de listas
+  const [editingList, setEditingList] = useState<ListItem | null>(null)
+  const [showDeleteListConfirm, setShowDeleteListConfirm] = useState<{show: boolean, list: ListItem | null}>({show: false, list: null})
+  const [isSavingList, setIsSavingList] = useState(false)
+  const [showCreateListForm, setShowCreateListForm] = useState(false)
 
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
@@ -96,12 +116,45 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     }
   }
 
+  // Función para actualizar la lista de listas
+  const refreshLists = async () => {
+    setIsRefreshingLists(true)
+    try {
+      const response = await fetch('/lists')
+      const result = await response.json()
+      
+      if (result.success) {
+        setCurrentLists(result.data)
+        setNotification({ type: 'success', message: 'Lista de listas actualizada correctamente' })
+        setTimeout(() => setNotification(null), 3000)
+      } else {
+        setNotification({ type: 'error', message: 'Error al actualizar la lista de listas' })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    } catch (error) {
+      console.error('Error al actualizar listas:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al actualizar listas' })
+      setTimeout(() => setNotification(null), 10000)
+    } finally {
+      setIsRefreshingLists(false)
+    }
+  }
+
   // Formulario para editar contacto
   const { data: editData, setData: setEditData, processing: editProcessing, errors: editErrors, reset: resetEdit } = useForm({
     name: '',
     email: '',
     description: '',
     status: 'active'
+  })
+
+  // Formulario para crear/editar lista
+  const { data: listData, setData: setListData, processing: listProcessing, errors: listErrors, reset: resetList } = useForm({
+    name: '',
+    slug: '',
+    description: '',
+    status: 'active',
+    is_activated: false
   })
 
   // Función para abrir modal de edición
@@ -503,10 +556,156 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
     }
   }
 
+  // Funciones para gestión de listas
+  const handleCreateList = () => {
+    setShowCreateListForm(true)
+    resetList()
+  }
+
+  const handleEditList = (list: ListItem) => {
+    setEditingList(list)
+    setListData({
+      name: list.name,
+      slug: list.slug,
+      description: list.description || '',
+      status: list.status,
+      is_activated: list.isActivated
+    })
+  }
+
+  const handleCloseListForm = () => {
+    setShowCreateListForm(false)
+    setEditingList(null)
+    resetList()
+  }
+
+  const handleListSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    
+    if (!listData.name.trim()) {
+      setNotification({ type: 'error', message: 'El nombre de la lista es requerido' })
+      setTimeout(() => setNotification(null), 5000)
+      return
+    }
+
+    setIsSavingList(true)
+
+    try {
+      const url = editingList ? `/lists/${editingList.id}` : '/lists'
+      const method = editingList ? 'PUT' : 'POST'
+
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify(listData)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        handleCloseListForm()
+        await refreshLists()
+        setNotification({ 
+          type: 'success', 
+          message: editingList ? 'Lista actualizada correctamente' : 'Lista creada correctamente'
+        })
+        setTimeout(() => setNotification(null), 3000)
+      } else {
+        setNotification({ type: 'error', message: result.message || 'Error al procesar la lista' })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    } catch (error) {
+      console.error('Error al procesar lista:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al procesar la lista' })
+      setTimeout(() => setNotification(null), 10000)
+    } finally {
+      setIsSavingList(false)
+    }
+  }
+
+  const handleToggleActivation = async (list: ListItem) => {
+    try {
+      const response = await fetch(`/lists/${list.id}/toggle-activation`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        // Actualizar la lista local
+        setCurrentLists(prevLists => 
+          prevLists.map(l => 
+            l.id === list.id 
+              ? { ...l, isActivated: !l.isActivated }
+              : l.isActivated 
+                ? { ...l, isActivated: false } // Desactivar otras listas
+                : l
+          )
+        )
+        
+        showError('Éxito', result.message)
+      } else {
+        showError('Error', result.message)
+      }
+    } catch (error) {
+      console.error('Error al cambiar estado de activación:', error)
+      showError('Error', 'Error al cambiar el estado de activación')
+    }
+  }
+
+  const handleDeleteList = (list: ListItem) => {
+    setShowDeleteListConfirm({show: true, list})
+  }
+
+  const confirmDeleteList = async () => {
+    if (showDeleteListConfirm.list) {
+      try {
+        const response = await fetch(`/lists/${showDeleteListConfirm.list.id}`, {
+          method: 'DELETE',
+          headers: {
+            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+          }
+        })
+
+        const result = await response.json()
+
+        if (result.success) {
+          setShowDeleteListConfirm({show: false, list: null})
+          await refreshLists()
+          setNotification({ type: 'success', message: 'Lista eliminada correctamente' })
+          setTimeout(() => setNotification(null), 3000)
+        } else {
+          setNotification({ type: 'error', message: result.message || 'Error al eliminar la lista' })
+          setTimeout(() => setNotification(null), 10000)
+        }
+      } catch (error) {
+        console.error('Error al eliminar lista:', error)
+        setNotification({ type: 'error', message: 'Error de conexión al eliminar la lista' })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    }
+  }
+
+  const cancelDeleteList = () => {
+    setShowDeleteListConfirm({show: false, list: null})
+  }
+
   const filteredSubscribers = currentSubscribers.filter(subscriber =>
     subscriber.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     subscriber.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     (subscriber.description && subscriber.description.toLowerCase().includes(searchTerm.toLowerCase()))
+  )
+
+  const filteredLists = currentLists.filter(list =>
+    list.name.toLowerCase().includes(listSearchTerm.toLowerCase()) ||
+    (list.description && list.description.toLowerCase().includes(listSearchTerm.toLowerCase()))
   )
 
   return (
@@ -583,6 +782,19 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                   <div className="flex items-center space-x-2">
                     <Upload className="h-4 w-4" />
                     <span>Importar</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('lists')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'lists'
+                      ? 'border-orange-500 text-orange-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <List className="h-4 w-4" />
+                    <span>Listas</span>
                   </div>
                 </button>
               </nav>
@@ -865,6 +1077,195 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
               </div>
             )}
 
+            {/* Lists Tab */}
+            {activeTab === 'lists' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow-sm border p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Gestionar Listas</h3>
+                    <button
+                      onClick={handleCreateList}
+                      className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm flex items-center space-x-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Crear Lista</span>
+                    </button>
+                  </div>
+
+                  <div className="text-sm text-gray-600 mb-4">
+                    <p>• Las listas te permiten organizar tus contactos en grupos específicos</p>
+                    <p>• Puedes crear múltiples listas para diferentes campañas o segmentos</p>
+                    <p>• Cada lista puede tener su propio estado (activa, inactiva, archivada)</p>
+                  </div>
+                </div>
+
+                {/* Lists Table */}
+                <div className="bg-white rounded-lg shadow-sm border">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-semibold text-gray-900">Mis Listas</h3>
+                      <div className="flex items-center space-x-3">
+                        <button
+                          onClick={refreshLists}
+                          disabled={isRefreshingLists}
+                          aria-label="Actualizar listas"
+                          title="Actualizar listas"
+                          className={`flex items-center space-x-2 px-3 py-2 rounded-lg transition-all duration-300 ${
+                            isRefreshingLists 
+                              ? 'bg-gray-100 text-gray-400 cursor-not-allowed animate-pulse' 
+                              : 'bg-orange-100 text-orange-600 hover:bg-orange-200 hover:scale-105'
+                          }`}
+                        >
+                          <RefreshCw 
+                            className={`h-4 w-4 ${isRefreshingLists ? 'animate-spin-slow' : ''}`} 
+                            style={isRefreshingLists ? { animation: 'spin 1s linear infinite' } : {}} />
+                        </button>
+
+                        <div className="relative">
+                          <Search className="h-4 w-4 absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+                          <input
+                            type="text"
+                            placeholder="Buscar listas..."
+                            value={listSearchTerm}
+                            onChange={(e) => setListSearchTerm(e.target.value)}
+                            className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="overflow-x-auto max-h-80 overflow-y-auto relative scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100 hover:scrollbar-thumb-gray-400">
+                    {/* Gradiente superior para indicar contenido arriba */}
+                    <div className="absolute top-0 left-0 right-0 h-4 bg-gradient-to-b from-white to-transparent pointer-events-none z-20"></div>
+                    {/* Gradiente inferior para indicar más contenido */}
+                    <div className="absolute bottom-0 left-0 right-0 h-4 bg-gradient-to-t from-white to-transparent pointer-events-none z-20"></div>
+                    <table className="min-w-full divide-y divide-gray-200">
+                      <thead className="bg-gray-50 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Lista
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Slug
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Descripción
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Estado
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Activada
+                          </th>
+                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Fecha
+                          </th>
+                          <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Acciones
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-200">
+                        {filteredLists.map((list) => (
+                          <tr key={list.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center">
+                                <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+                                  <Folder className="h-5 w-5 text-blue-600" />
+                                </div>
+                                <div className="ml-4">
+                                  <div className="text-sm font-medium text-gray-900">
+                                    {list.name}
+                                  </div>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900 font-mono">
+                                {list.slug}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900">
+                                {list.description || 'Sin descripción'}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                list.status === 'active' 
+                                  ? 'bg-green-100 text-green-800' 
+                                  : list.status === 'inactive'
+                                  ? 'bg-red-100 text-red-800'
+                                  : 'bg-gray-100 text-gray-800'
+                              }`}>
+                                {list.status === 'active' ? 'Activa' : 
+                                 list.status === 'inactive' ? 'Inactiva' : 'Archivada'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                                list.isActivated 
+                                  ? 'bg-blue-100 text-blue-800' 
+                                  : 'bg-gray-100 text-gray-500'
+                              }`}>
+                                {list.isActivated ? 'Predeterminada' : 'No activada'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="flex items-center text-sm text-gray-900">
+                                <Calendar className="h-4 w-4 text-gray-400 mr-2" />
+                                {new Date(list.createdAt).toLocaleDateString()}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                              <div className="flex items-center justify-end space-x-2">
+                                <button 
+                                  onClick={() => handleEditList(list)}
+                                  className="text-orange-600 hover:text-orange-900"
+                                  title="Editar lista"
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </button>
+                                <button 
+                                  onClick={() => handleToggleActivation(list)}
+                                  className={`${list.isActivated ? 'text-green-600 hover:text-green-900' : 'text-blue-600 hover:text-blue-900'}`}
+                                  title={list.isActivated ? 'Desactivar como predeterminada' : 'Activar como predeterminada'}
+                                >
+                                  {list.isActivated ? <CheckCircle className="h-4 w-4" /> : <Circle className="h-4 w-4" />}
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteList(list)}
+                                  className="text-red-600 hover:text-red-900"
+                                  title="Eliminar lista"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  
+                  {filteredLists.length === 0 && (
+                    <div className="text-center py-12">
+                      <List className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No hay listas</h3>
+                      <p className="text-gray-600 mb-4">Comienza creando tu primera lista para organizar tus contactos.</p>
+                      <button
+                        onClick={handleCreateList}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                      >
+                        Crear Primera Lista
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Contact List */}
             <div className="bg-white rounded-lg shadow-sm border">
               <div className="px-6 py-4 border-b border-gray-200">
@@ -1008,6 +1409,7 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                 </div>
               )}
             </div>
+
           </div>
         </div>
 
@@ -1156,6 +1558,173 @@ export default function Contactos({ user, subscribers = [], flash }: ContactosPr
                   </button>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación de borrado de lista */}
+        {showDeleteListConfirm.show && showDeleteListConfirm.list && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Confirmar Eliminación</h3>
+              </div>
+              
+              <div className="p-6">
+                <div className="flex items-center mb-4">
+                  <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mr-4">
+                    <Trash2 className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-medium">¿Estás seguro de que quieres eliminar esta lista?</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      <strong>{showDeleteListConfirm.list.name}</strong>
+                    </p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-600 mb-6">
+                  Esta acción no se puede deshacer. La lista será eliminada permanentemente.
+                </p>
+                
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={cancelDeleteList}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDeleteList}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Eliminar Lista
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Crear/Editar Lista */}
+        {(showCreateListForm || editingList) && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {editingList ? 'Editar Lista' : 'Crear Nueva Lista'}
+                </h3>
+              </div>
+              
+              <form onSubmit={handleListSubmit} className="p-6">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nombre de la Lista *
+                    </label>
+                    <input
+                      type="text"
+                      value={listData.name}
+                      onChange={(e) => setListData('name', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        listErrors.name ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Ej: Lista de Clientes VIP"
+                      required
+                    />
+                    {listErrors.name && (
+                      <p className="mt-1 text-sm text-red-600">{listErrors.name}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Slug
+                    </label>
+                    <input
+                      type="text"
+                      value={listData.slug}
+                      onChange={(e) => setListData('slug', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        listErrors.slug ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="ej: lista-clientes-vip"
+                    />
+                    <p className="text-xs text-gray-500">Se genera automáticamente si se deja vacío</p>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Descripción
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={listData.description}
+                      onChange={(e) => setListData('description', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        listErrors.description ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Descripción opcional de la lista"
+                    />
+                    {listErrors.description && (
+                      <p className="mt-1 text-sm text-red-600">{listErrors.description}</p>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Estado
+                    </label>
+                    <select 
+                      value={listData.status}
+                      onChange={(e) => setListData('status', e.target.value)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="active">Activa</option>
+                      <option value="inactive">Inactiva</option>
+                      <option value="archived">Archivada</option>
+                    </select>
+                  </div>
+                  
+                  <div>
+                    <label className="flex items-center space-x-2">
+                      <input
+                        type="checkbox"
+                        checked={listData.is_activated}
+                        onChange={(e) => setListData('is_activated', e.target.checked)}
+                        className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        Lista por Defecto
+                      </span>
+                    </label>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Marca esta opción para la lista por defecto para campañas
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseListForm}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingList}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      isSavingList 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-orange-500 hover:bg-orange-600'
+                    } text-white`}
+                  >
+                    {isSavingList ? 'Guardando...' : (editingList ? 'Actualizar Lista' : 'Crear Lista')}
+                  </button>
+                </div>
+              </form>
             </div>
           </div>
         )}
