@@ -1733,8 +1733,17 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                       )}
                     </div>
                     {editSelectedListIds.length > 0 && (
-                      <div className="mt-2 text-sm text-gray-600">
-                        <span className="font-medium">{editSelectedListIds.length}</span> lista{editSelectedListIds.length !== 1 ? 's' : ''} seleccionada{editSelectedListIds.length !== 1 ? 's' : ''}
+                      <div className="mt-2 flex items-center justify-between">
+                        <div className="text-sm text-gray-600">
+                          <span className="font-medium">{editSelectedListIds.length}</span> lista{editSelectedListIds.length !== 1 ? 's' : ''} seleccionada{editSelectedListIds.length !== 1 ? 's' : ''}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setEditSelectedListIds([])}
+                          className="text-xs text-red-600 hover:text-red-700 font-medium underline"
+                        >
+                          Quitar de todas las listas
+                        </button>
                       </div>
                     )}
                     <p className="text-xs text-gray-500 mt-2">
