@@ -63,7 +63,7 @@ export default class ListsController {
       })
     }
 
-    const data = request.only(['name', 'slug', 'description', 'status', 'is_activated'])
+    const data = request.only(['name', 'description', 'status', 'is_activated'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -73,27 +73,17 @@ export default class ListsController {
       })
     }
 
-    // Generar slug automáticamente si no se proporciona
-    let slug = data.slug?.trim()
-    if (!slug) {
-      slug = data.name
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '') // Remover caracteres especiales
-        .replace(/\s+/g, '-') // Reemplazar espacios con guiones
-        .replace(/-+/g, '-') // Reemplazar múltiples guiones con uno solo
-        .trim()
+    // Obtener el tenant para generar slug basado en él
+    const tenant = await tenantUser.related('tenant').query().first()
+    if (!tenant) {
+      return response.status(400).json({
+        success: false,
+        message: 'No se pudo obtener información del tenant'
+      })
     }
 
-    // Verificar que el slug sea único en el tenant
-    let finalSlug = slug
-    let counter = 1
-    while (await List.query()
-      .where('tenantId', tenantUser.tenantId)
-      .where('slug', finalSlug)
-      .first()) {
-      finalSlug = `${slug}-${counter}`
-      counter++
-    }
+    // Generar slug automáticamente basado solo en el tenant
+    const finalSlug = tenant.slug
 
     try {
       // Si se está activando esta lista, desactivar todas las demás del tenant
@@ -211,7 +201,7 @@ export default class ListsController {
       .where('tenantId', tenantUser.tenantId)
       .firstOrFail()
     
-    const data = request.only(['name', 'slug', 'description', 'status', 'is_activated'])
+    const data = request.only(['name', 'description', 'status', 'is_activated'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -221,28 +211,17 @@ export default class ListsController {
       })
     }
 
-    // Generar slug automáticamente si no se proporciona
-    let slug = data.slug?.trim()
-    if (!slug) {
-      slug = data.name
-        .toLowerCase()
-        .replace(/[^a-z0-9\s-]/g, '') // Remover caracteres especiales
-        .replace(/\s+/g, '-') // Reemplazar espacios con guiones
-        .replace(/-+/g, '-') // Reemplazar múltiples guiones con uno solo
-        .trim()
+    // Obtener el tenant para generar slug basado en él
+    const tenant = await tenantUser.related('tenant').query().first()
+    if (!tenant) {
+      return response.status(400).json({
+        success: false,
+        message: 'No se pudo obtener información del tenant'
+      })
     }
 
-    // Verificar que el slug sea único en el tenant (excluyendo la lista actual)
-    let finalSlug = slug
-    let counter = 1
-    while (await List.query()
-      .where('tenantId', tenantUser.tenantId)
-      .where('slug', finalSlug)
-      .where('id', '!=', params.id)
-      .first()) {
-      finalSlug = `${slug}-${counter}`
-      counter++
-    }
+    // Generar slug automáticamente basado solo en el tenant
+    const finalSlug = tenant.slug
 
     try {
       // Si se está activando esta lista, desactivar todas las demás del tenant

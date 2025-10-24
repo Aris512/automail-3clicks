@@ -386,8 +386,8 @@ export default class SubscribersController {
       }
 
       // Obtener datos del formulario
-      const { email, name, description, company, listId } = request.only([
-        'email', 'name', 'description', 'company', 'listId'
+      const { email, name, description, listId } = request.only([
+        'email', 'name', 'description', 'listId'
       ])
 
       // Validaciones básicas
@@ -438,7 +438,6 @@ export default class SubscribersController {
         email,
         name: name || '',
         description: description || '',
-        company: company || '',
         tenantId: tenantUser.tenantId,
         status: 'active'
       })

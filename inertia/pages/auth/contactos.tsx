@@ -151,7 +151,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   // Formulario para crear/editar lista
   const { data: listData, setData: setListData, processing: listProcessing, errors: listErrors, reset: resetList } = useForm({
     name: '',
-    slug: '',
     description: '',
     status: 'active',
     is_activated: false
@@ -566,7 +565,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     setEditingList(list)
     setListData({
       name: list.name,
-      slug: list.slug,
       description: list.description || '',
       status: list.status,
       is_activated: list.isActivated
@@ -650,13 +648,25 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
           )
         )
         
-        showError('Éxito', result.message)
+        setNotification({ 
+          type: 'success', 
+          message: result.message 
+        })
+        setTimeout(() => setNotification(null), 3000)
       } else {
-        showError('Error', result.message)
+        setNotification({ 
+          type: 'error', 
+          message: result.message 
+        })
+        setTimeout(() => setNotification(null), 10000)
       }
     } catch (error) {
       console.error('Error al cambiar estado de activación:', error)
-      showError('Error', 'Error al cambiar el estado de activación')
+      setNotification({ 
+        type: 'error', 
+        message: 'Error al cambiar el estado de activación' 
+      })
+      setTimeout(() => setNotification(null), 10000)
     }
   }
 
@@ -1147,9 +1157,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                             Lista
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                            Slug
-                          </th>
-                          <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Descripción
                           </th>
                           <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -1179,11 +1186,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                                     {list.name}
                                   </div>
                                 </div>
-                              </div>
-                            </td>
-                            <td className="px-6 py-4 whitespace-nowrap">
-                              <div className="text-sm text-gray-900 font-mono">
-                                {list.slug}
                               </div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
@@ -1635,22 +1637,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     {listErrors.name && (
                       <p className="mt-1 text-sm text-red-600">{listErrors.name}</p>
                     )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Slug
-                    </label>
-                    <input
-                      type="text"
-                      value={listData.slug}
-                      onChange={(e) => setListData('slug', e.target.value)}
-                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
-                        listErrors.slug ? 'border-red-300' : 'border-gray-300'
-                      }`}
-                      placeholder="ej: lista-clientes-vip"
-                    />
-                    <p className="text-xs text-gray-500">Se genera automáticamente si se deja vacío</p>
                   </div>
                   
                   <div>
