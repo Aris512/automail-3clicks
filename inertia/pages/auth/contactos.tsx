@@ -182,6 +182,11 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     setViewingList(null)
   }
 
+  // Función para redirigir al tab de listas
+  const handleCreateNewList = () => {
+    setActiveTab('lists')
+  }
+
   // Función para abrir modal de edición
   const handleEdit = (subscriber: Subscriber) => {
     setEditingSubscriber(subscriber)
@@ -953,6 +958,10 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                               <select
                                 value={contact.listId || ''}
                                 onChange={(e) => {
+                                  if (e.target.value === 'create_new') {
+                                    handleCreateNewList()
+                                    return
+                                  }
                                   const value = e.target.value ? parseInt(e.target.value) : null
                                   updateManualContact(contact.id, 'listId', value as any)
                                 }}
@@ -965,6 +974,9 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                                     {list.isActivated && ' (Predeterminada)'}
                                   </option>
                                 ))}
+                                <option value="create_new" className="text-orange-600 font-medium">
+                                  ➕ Crear lista nueva
+                                </option>
                               </select>
                             </td>
                             <td className="px-3 py-3 text-center">
