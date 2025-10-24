@@ -3,7 +3,7 @@ import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, CheckCircle, Circle } from 'lucide-react'
+import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, CheckCircle, Circle, Eye } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 interface User {
@@ -19,6 +19,7 @@ interface Subscriber {
   description?: string
   status: 'active' | 'inactive' | 'archived'
   createdAt: string
+  lists?: ListItem[]
 }
 
 interface ListItem {
@@ -48,6 +49,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   const [listSearchTerm, setListSearchTerm] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
   const [editingSubscriber, setEditingSubscriber] = useState<Subscriber | null>(null)
+  const [viewingSubscriber, setViewingSubscriber] = useState<Subscriber | null>(null)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState<{show: boolean, subscriber: Subscriber | null}>({show: false, subscriber: null})
   const [currentSubscribers, setCurrentSubscribers] = useState<Subscriber[]>(subscribers)
   const [currentLists, setCurrentLists] = useState<ListItem[]>(lists)
@@ -68,14 +70,17 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     email: string
     description: string
     status: 'active' | 'inactive' | 'archived'
+    listId: number | null
   }>>([{
     id: '1',
     name: '',
     email: '',
     description: '',
-    status: 'active'
+    status: 'active',
+    listId: null
   }])
   const [isSavingManual, setIsSavingManual] = useState(false)
+  const [editSelectedListIds, setEditSelectedListIds] = useState<number[]>([])
 
   // Estados para gestión de listas
   const [editingList, setEditingList] = useState<ListItem | null>(null)
@@ -149,12 +154,22 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   })
 
   // Formulario para crear/editar lista
-  const { data: listData, setData: setListData, processing: listProcessing, errors: listErrors, reset: resetList } = useForm({
+  const { data: listData, setData: setListData, errors: listErrors, reset: resetList } = useForm({
     name: '',
     description: '',
     status: 'active',
     is_activated: false
   })
+
+  // Función para abrir modal de vista
+  const handleView = (subscriber: Subscriber) => {
+    setViewingSubscriber(subscriber)
+  }
+
+  // Función para cerrar modal de vista
+  const handleCloseView = () => {
+    setViewingSubscriber(null)
+  }
 
   // Función para abrir modal de edición
   const handleEdit = (subscriber: Subscriber) => {
@@ -165,12 +180,16 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       description: subscriber.description || '',
       status: subscriber.status
     })
+    // Cargar las listas del contacto
+    const subscriberListIds = subscriber.lists ? subscriber.lists.map(list => list.id) : []
+    setEditSelectedListIds(subscriberListIds)
   }
 
   // Función para cerrar modal de edición
   const handleCloseEdit = () => {
     setEditingSubscriber(null)
     resetEdit()
+    setEditSelectedListIds([])
   }
 
   // Función para enviar formulario de edición
@@ -191,7 +210,10 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
         },
-        body: JSON.stringify(editData)
+        body: JSON.stringify({
+          ...editData,
+          listIds: editSelectedListIds
+        })
       })
       .then(response => response.json())
       .then(result => {
@@ -430,7 +452,8 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       name: '',
       email: '',
       description: '',
-      status: 'active'
+      status: 'active',
+      listId: null
     }])
   }
 
@@ -440,7 +463,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     }
   }
 
-  const updateManualContact = (id: string, field: string, value: string) => {
+  const updateManualContact = (id: string, field: string, value: string | number) => {
     setManualContacts(manualContacts.map(contact => 
       contact.id === id ? { ...contact, [field]: value } : contact
     ))
@@ -452,7 +475,8 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       name: '',
       email: '',
       description: '',
-      status: 'active'
+      status: 'active',
+      listId: null
     }])
   }
 
@@ -493,7 +517,15 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
           'Content-Type': 'application/json',
           'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
         },
-        body: JSON.stringify({ contacts: validContacts })
+        body: JSON.stringify({ 
+          contacts: validContacts.map(contact => ({
+            name: contact.name,
+            email: contact.email,
+            description: contact.description,
+            status: contact.status,
+            listIds: contact.listId ? [contact.listId] : []
+          }))
+        })
       })
 
       const result = await response.json()
@@ -836,6 +868,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     </div>
                   </div>
 
+
                   {/* Tabla de contactos */}
                   <div className="overflow-x-auto">
                     <table className="min-w-full divide-y divide-gray-200">
@@ -852,6 +885,9 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                           </th>
                           <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Estado
+                          </th>
+                          <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                            Lista
                           </th>
                           <th className="px-3 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
                             Acciones
@@ -899,6 +935,24 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                                 <option value="archived">Archivado</option>
                               </select>
                             </td>
+                            <td className="px-3 py-3">
+                              <select
+                                value={contact.listId || ''}
+                                onChange={(e) => {
+                                  const value = e.target.value ? parseInt(e.target.value) : null
+                                  updateManualContact(contact.id, 'listId', value as any)
+                                }}
+                                className="w-full px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                              >
+                                <option value="">Seleccionar lista</option>
+                                {currentLists.map((list) => (
+                                  <option key={list.id} value={list.id}>
+                                    {list.name}
+                                    {list.isActivated && ' (Predeterminada)'}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
                             <td className="px-3 py-3 text-center">
                               <button
                                 onClick={() => removeManualContact(contact.id)}
@@ -943,6 +997,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                   <div className="mt-4 text-xs text-gray-500">
                     <p>• Los campos marcados con * son obligatorios</p>
                     <p>• Puedes agregar múltiples filas usando el botón "Agregar Fila"</p>
+                    <p>• Cada contacto puede tener su propia lista asignada</p>
                     <p>• Se validarán los emails antes de guardar</p>
                     <p>• Los emails duplicados se omitirán automáticamente</p>
                   </div>
@@ -1320,10 +1375,10 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                         Email
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Descripción
+                        Estado
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Estado
+                        Listas
                       </th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Fecha
@@ -1357,11 +1412,6 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {subscriber.description || 'Sin descripción'}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
                           <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
                             subscriber.status === 'active' 
                               ? 'bg-green-100 text-green-800' 
@@ -1374,6 +1424,30 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-wrap gap-1">
+                            {subscriber.lists && subscriber.lists.length > 0 ? (
+                              subscriber.lists.map((list) => (
+                                <span
+                                  key={list.id}
+                                  className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                    list.isActivated 
+                                      ? 'bg-green-100 text-green-800 border border-green-200' 
+                                      : 'bg-blue-100 text-blue-800'
+                                  }`}
+                                  title={list.isActivated ? 'Lista predeterminada' : 'Lista normal'}
+                                >
+                                  {list.name}
+                                  {list.isActivated && (
+                                    <span className="ml-1">⭐</span>
+                                  )}
+                                </span>
+                              ))
+                            ) : (
+                              <span className="text-xs text-gray-500 italic">Sin listas</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
                           <div className="flex items-center text-sm text-gray-900">
                             <Calendar className="h-4 w-4 text-gray-400 mr-2" />
                             {new Date(subscriber.createdAt).toLocaleDateString()}
@@ -1381,6 +1455,13 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                           <div className="flex items-center justify-end space-x-2">
+                            <button 
+                              onClick={() => handleView(subscriber)}
+                              className="text-blue-600 hover:text-blue-900"
+                              title="Ver detalles del contacto"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
                             <button 
                               onClick={() => handleEdit(subscriber)}
                               className="text-orange-600 hover:text-orange-900"
@@ -1418,17 +1499,18 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
         {/* Modal de Edición */}
         {editingSubscriber && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
-              <div className="px-6 py-4 border-b border-gray-200">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
                 <h3 className="text-lg font-semibold text-gray-900">Editar Contacto</h3>
               </div>
               
-              <form onSubmit={handleEditSubmit} className="p-6">
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Nombre *
-                    </label>
+              <div className="p-6 overflow-y-auto flex-1">
+                <form onSubmit={handleEditSubmit}>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Nombre *
+                      </label>
                     <input
                       type="text"
                       value={editData.name}
@@ -1442,6 +1524,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     {editErrors.name && (
                       <p className="mt-1 text-sm text-red-600">{editErrors.name}</p>
                     )}
+                    </div>
                   </div>
                   
                   <div>
@@ -1493,9 +1576,45 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                       <option value="archived">Archivado</option>
                     </select>
                   </div>
-                </div>
-                
-                <div className="flex justify-end space-x-3 mt-6">
+                  
+                  {/* Selección de listas */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Listas Asignadas
+                    </label>
+                    <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                      {currentLists.map((list) => (
+                        <label key={list.id} className="flex items-center space-x-2">
+                          <input
+                            type="checkbox"
+                            checked={editSelectedListIds.includes(list.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setEditSelectedListIds([...editSelectedListIds, list.id])
+                              } else {
+                                setEditSelectedListIds(editSelectedListIds.filter(id => id !== list.id))
+                              }
+                            }}
+                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                          />
+                          <span className="text-sm text-gray-700">{list.name}</span>
+                          {list.isActivated && (
+                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                              Predeterminada
+                            </span>
+                          )}
+                        </label>
+                      ))}
+                      {currentLists.length === 0 && (
+                        <p className="text-sm text-gray-500 italic">No hay listas disponibles.</p>
+                      )}
+                    </div>
+                  </div>
+                </form>
+              </div>
+              
+              <div className="px-6 py-4 border-t border-gray-200 flex-shrink-0">
+                <div className="flex justify-end space-x-3">
                   <button
                     type="button"
                     onClick={handleCloseEdit}
@@ -1515,7 +1634,124 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     {editProcessing ? 'Guardando...' : 'Guardar Cambios'}
                   </button>
                 </div>
-              </form>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Vista de Solo Lectura */}
+        {viewingSubscriber && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 max-h-[90vh] flex flex-col">
+              <div className="px-6 py-4 border-b border-gray-200 flex-shrink-0">
+                <h3 className="text-lg font-semibold text-gray-900">Detalles del Contacto</h3>
+              </div>
+              
+              <div className="p-6 overflow-y-auto flex-1">
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nombre
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      {viewingSubscriber.name}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Email
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      {viewingSubscriber.email}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Descripción
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900 min-h-[60px]">
+                      {viewingSubscriber.description || 'Sin descripción'}
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Estado
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                        viewingSubscriber.status === 'active' 
+                          ? 'bg-green-100 text-green-800' 
+                          : viewingSubscriber.status === 'inactive'
+                          ? 'bg-red-100 text-red-800'
+                          : 'bg-gray-100 text-gray-800'
+                      }`}>
+                        {viewingSubscriber.status === 'active' ? 'Activo' : 
+                         viewingSubscriber.status === 'inactive' ? 'Inactivo' : 'Archivado'}
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Listas Asignadas
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 min-h-[60px]">
+                      <div className="flex flex-wrap gap-1">
+                        {viewingSubscriber.lists && viewingSubscriber.lists.length > 0 ? (
+                          viewingSubscriber.lists.map((list) => (
+                            <span
+                              key={list.id}
+                              className={`inline-flex px-2 py-1 text-xs font-medium rounded-full ${
+                                list.isActivated 
+                                  ? 'bg-green-100 text-green-800 border border-green-200' 
+                                  : 'bg-blue-100 text-blue-800'
+                              }`}
+                              title={list.isActivated ? 'Lista predeterminada' : 'Lista normal'}
+                            >
+                              {list.name}
+                              {list.isActivated && (
+                                <span className="ml-1">⭐</span>
+                              )}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-xs text-gray-500 italic">Sin listas asignadas</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Fecha de Creación
+                    </label>
+                    <div className="w-full px-3 py-2 border border-gray-200 rounded-lg bg-gray-50 text-gray-900">
+                      {new Date(viewingSubscriber.createdAt).toLocaleDateString('es-ES', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="px-6 py-4 border-t border-gray-200 flex-shrink-0">
+                <div className="flex justify-end space-x-3">
+                  <button
+                    type="button"
+                    onClick={handleCloseView}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}

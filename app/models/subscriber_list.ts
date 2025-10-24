@@ -5,6 +5,8 @@ import List from './list.js'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 
 export default class SubscriberList extends BaseModel {
+  static table = 'subscribers_lists'
+  
   @column({ isPrimary: true })
   declare id: number
 

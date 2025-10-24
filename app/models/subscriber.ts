@@ -38,7 +38,7 @@ export default class Subscriber extends BaseModel {
   declare tenant: BelongsTo<typeof Tenant>
 
   @manyToMany(() => List, {
-    pivotTable: 'subscriber_lists',
+    pivotTable: 'subscribers_lists',
   })
   declare lists: ManyToMany<typeof List>
 

@@ -2,6 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import Subscriber from '#models/subscriber'
 import TenantUser from '#models/tenant_user'
 import List from '#models/list'
+import SubscriberList from '#models/subscriber_list'
 import { inject } from '@adonisjs/core'
 import XLSX from 'xlsx'
 import csv from 'csv-parser'
@@ -31,6 +32,7 @@ export default class SubscribersController {
 
     const subscribers = await Subscriber.query()
       .where('tenantId', tenantUser.tenantId)
+      .preload('lists')
       .orderBy('createdAt', 'desc')
 
     const lists = await List.query()
@@ -79,12 +81,14 @@ export default class SubscribersController {
       const requestData = request.all()
       console.log('📋 [STORE] Datos recibidos:', Object.keys(requestData))
       
-      let contacts: Array<{name: string, email: string, description?: string, status?: string}> = []
+      let contacts: Array<{name: string, email: string, description?: string, status?: string, listIds?: number[]}> = []
+      let listIds: number[] = []
       
       // Si viene un array de contactos (múltiples)
       if (requestData.contacts && Array.isArray(requestData.contacts)) {
         console.log(`📋 [STORE] Modo múltiple: ${requestData.contacts.length} contactos`)
         contacts = requestData.contacts
+        listIds = requestData.listIds || []
       } 
       // Si viene un solo contacto (modo individual)
       else if (requestData.name && requestData.email) {
@@ -93,8 +97,10 @@ export default class SubscribersController {
           name: requestData.name,
           email: requestData.email,
           description: requestData.description,
-          status: requestData.status
+          status: requestData.status,
+          listIds: requestData.listIds || []
         }]
+        listIds = requestData.listIds || []
       }
       else {
         console.log('❌ [STORE] No se proporcionaron datos válidos')
@@ -216,6 +222,37 @@ export default class SubscribersController {
 
       console.log(`✅ [STORE] Inserción completada exitosamente: ${newContacts.length} contactos nuevos`)
 
+      // Asociar contactos con listas si se proporcionaron listIds
+      if (listIds.length > 0) {
+        console.log(`🔗 [STORE] Asociando contactos con listas: ${listIds.join(', ')}`)
+        
+        // Verificar que las listas pertenezcan al tenant
+        const validLists = await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .whereIn('id', listIds)
+          .select('id')
+        
+        const validListIds = validLists.map(list => list.id)
+        
+        if (validListIds.length > 0) {
+          // Crear las asociaciones en subscriber_lists
+          const subscriberListAssociations = []
+          for (const subscriber of createdSubscribers) {
+            for (const listId of validListIds) {
+              subscriberListAssociations.push({
+                subscriberId: subscriber.id,
+                listId: listId
+              })
+            }
+          }
+          
+          if (subscriberListAssociations.length > 0) {
+            await SubscriberList.createMany(subscriberListAssociations)
+            console.log(`✅ [STORE] Asociaciones con listas creadas: ${subscriberListAssociations.length}`)
+          }
+        }
+      }
+
       // Preparar respuesta
       const responseMessage = existingEmailList.length > 0 
         ? `Se agregaron ${newContacts.length} contactos nuevos. Se omitieron ${existingEmailList.length} emails que ya existían.`
@@ -277,7 +314,7 @@ export default class SubscribersController {
       .where('tenantId', tenantUser.tenantId)
       .firstOrFail()
     
-    const data = request.only(['name', 'email', 'description', 'status'])
+    const data = request.only(['name', 'email', 'description', 'status', 'listIds'])
     
     // Validaciones básicas
     if (!data.name || !data.email) {
@@ -313,6 +350,32 @@ export default class SubscribersController {
     try {
       subscriber.merge(data)
       await subscriber.save()
+      
+      // Actualizar las listas asignadas si se proporcionaron listIds
+      if (data.listIds && Array.isArray(data.listIds)) {
+        // Verificar que las listas pertenezcan al tenant
+        const validLists = await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .whereIn('id', data.listIds)
+          .select('id')
+        
+        const validListIds = validLists.map(list => list.id)
+        
+        // Eliminar todas las asociaciones existentes
+        await SubscriberList.query()
+          .where('subscriberId', subscriber.id)
+          .delete()
+        
+        // Crear las nuevas asociaciones
+        if (validListIds.length > 0) {
+          const subscriberListAssociations = validListIds.map(listId => ({
+            subscriberId: subscriber.id,
+            listId: listId
+          }))
+          
+          await SubscriberList.createMany(subscriberListAssociations)
+        }
+      }
       
       return response.status(200).json({
         success: true,
@@ -386,8 +449,8 @@ export default class SubscribersController {
       }
 
       // Obtener datos del formulario
-      const { email, name, description, listId } = request.only([
-        'email', 'name', 'description', 'listId'
+      const { email, name, description, listIds } = request.only([
+        'email', 'name', 'description', 'listIds'
       ])
 
       // Validaciones básicas
@@ -442,10 +505,25 @@ export default class SubscribersController {
         status: 'active'
       })
 
-      // Si se proporcionó listId, agregar a la lista
-      if (listId) {
-        // Aquí podrías agregar lógica para asociar el suscriptor a una lista específica
-        // Por ahora solo creamos el suscriptor
+      // Asociar con listas si se proporcionaron listIds
+      if (listIds && Array.isArray(listIds) && listIds.length > 0) {
+        // Verificar que las listas pertenezcan al tenant
+        const validLists = await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .whereIn('id', listIds)
+          .select('id')
+        
+        const validListIds = validLists.map(list => list.id)
+        
+        if (validListIds.length > 0) {
+          // Crear las asociaciones en subscriber_lists
+          const subscriberListAssociations = validListIds.map(listId => ({
+            subscriberId: subscriber.id,
+            listId: listId
+          }))
+          
+          await SubscriberList.createMany(subscriberListAssociations)
+        }
       }
 
       // Detectar si es una petición desde formulario HTML o API
