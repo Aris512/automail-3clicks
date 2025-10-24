@@ -41,6 +41,8 @@ export default class List extends BaseModel {
 
   @manyToMany(() => Subscriber, {
     pivotTable: 'subscribers_lists',
+    pivotForeignKey: 'list_id',
+    pivotRelatedForeignKey: 'subscriber_id',
   })
   declare subscribers: ManyToMany<typeof Subscriber>
 }

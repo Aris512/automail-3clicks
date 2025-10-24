@@ -7,6 +7,7 @@ import { inject } from '@adonisjs/core'
 import XLSX from 'xlsx'
 import csv from 'csv-parser'
 import { createReadStream } from 'fs'
+import { DateTime } from 'luxon'
 
 @inject()
 export default class SubscribersController {
@@ -82,13 +83,11 @@ export default class SubscribersController {
       console.log('📋 [STORE] Datos recibidos:', Object.keys(requestData))
       
       let contacts: Array<{name: string, email: string, description?: string, status?: string, listIds?: number[]}> = []
-      let listIds: number[] = []
       
       // Si viene un array de contactos (múltiples)
       if (requestData.contacts && Array.isArray(requestData.contacts)) {
         console.log(`📋 [STORE] Modo múltiple: ${requestData.contacts.length} contactos`)
         contacts = requestData.contacts
-        listIds = requestData.listIds || []
       } 
       // Si viene un solo contacto (modo individual)
       else if (requestData.name && requestData.email) {
@@ -100,7 +99,6 @@ export default class SubscribersController {
           status: requestData.status,
           listIds: requestData.listIds || []
         }]
-        listIds = requestData.listIds || []
       }
       else {
         console.log('❌ [STORE] No se proporcionaron datos válidos')
@@ -222,27 +220,47 @@ export default class SubscribersController {
 
       console.log(`✅ [STORE] Inserción completada exitosamente: ${newContacts.length} contactos nuevos`)
 
-      // Asociar contactos con listas si se proporcionaron listIds
-      if (listIds.length > 0) {
-        console.log(`🔗 [STORE] Asociando contactos con listas: ${listIds.join(', ')}`)
-        
-        // Verificar que las listas pertenezcan al tenant
+      // Asociar contactos con listas individuales
+      console.log(`🔗 [STORE] Procesando asociaciones de listas para ${createdSubscribers.length} contactos...`)
+      
+      // Verificar que las listas pertenezcan al tenant (obtener todas las listas válidas de una vez)
+      const allListIds = new Set<number>()
+      for (const contact of newContacts) {
+        if (contact.listIds && contact.listIds.length > 0) {
+          contact.listIds.forEach(id => allListIds.add(id))
+        }
+      }
+      
+      if (allListIds.size > 0) {
         const validLists = await List.query()
           .where('tenantId', tenantUser.tenantId)
-          .whereIn('id', listIds)
+          .whereIn('id', Array.from(allListIds))
           .select('id')
         
         const validListIds = validLists.map(list => list.id)
+        console.log(`🔗 [STORE] Listas válidas encontradas: ${validListIds.join(', ')}`)
         
         if (validListIds.length > 0) {
-          // Crear las asociaciones en subscriber_lists
+          // Crear las asociaciones en subscriber_lists para cada contacto individualmente
           const subscriberListAssociations = []
-          for (const subscriber of createdSubscribers) {
-            for (const listId of validListIds) {
-              subscriberListAssociations.push({
-                subscriberId: subscriber.id,
-                listId: listId
-              })
+          
+          for (let i = 0; i < createdSubscribers.length; i++) {
+            const subscriber = createdSubscribers[i]
+            const contact = newContacts[i]
+            
+            if (contact.listIds && contact.listIds.length > 0) {
+              // Solo agregar listas que sean válidas para el tenant
+              const contactValidListIds = contact.listIds.filter(id => validListIds.includes(id))
+              
+              for (const listId of contactValidListIds) {
+                subscriberListAssociations.push({
+                  subscriber_id: subscriber.id,
+                  list_id: listId,
+                  source: 'manual' as const,
+                  status: 'active' as const,
+                  subscribed_at: DateTime.now()
+                })
+              }
             }
           }
           
@@ -348,29 +366,35 @@ export default class SubscribersController {
     }
 
     try {
-      subscriber.merge(data)
+      // Separar los datos del suscriptor de los datos de las listas
+      const { listIds, ...subscriberData } = data
+      
+      subscriber.merge(subscriberData)
       await subscriber.save()
       
       // Actualizar las listas asignadas si se proporcionaron listIds
-      if (data.listIds && Array.isArray(data.listIds)) {
+      if (listIds && Array.isArray(listIds)) {
         // Verificar que las listas pertenezcan al tenant
         const validLists = await List.query()
           .where('tenantId', tenantUser.tenantId)
-          .whereIn('id', data.listIds)
+          .whereIn('id', listIds)
           .select('id')
         
         const validListIds = validLists.map(list => list.id)
         
         // Eliminar todas las asociaciones existentes
         await SubscriberList.query()
-          .where('subscriberId', subscriber.id)
+          .where('subscriber_id', subscriber.id)
           .delete()
         
         // Crear las nuevas asociaciones
         if (validListIds.length > 0) {
           const subscriberListAssociations = validListIds.map(listId => ({
-            subscriberId: subscriber.id,
-            listId: listId
+            subscriber_id: subscriber.id,
+            list_id: listId,
+            source: 'manual' as const,
+            status: 'active' as const,
+            subscribed_at: DateTime.now()
           }))
           
           await SubscriberList.createMany(subscriberListAssociations)
@@ -653,8 +677,8 @@ export default class SubscribersController {
         // Obtener solo los subscribers del tenant del usuario autenticado
         const subscribers = await Subscriber.query()
           .where('tenantId', tenantUser.tenantId)
+          .preload('lists')
           .orderBy('createdAt', 'desc')
-          .select(['id', 'name', 'email', 'description', 'status', 'createdAt'])
 
         console.log(`📋 [PUBLIC_INDEX] Contactos encontrados para tenant ${tenantUser.tenantId}: ${subscribers.length}`)
 
@@ -680,8 +704,8 @@ export default class SubscribersController {
       
       // Devolver todos los subscribers independientemente del estado
       const subscribers = await query
+        .preload('lists')
         .orderBy('createdAt', 'desc')
-        .select(['id', 'name', 'email', 'description', 'status', 'createdAt'])
       
       console.log(`📋 [PUBLIC_INDEX] Contactos encontrados (público): ${subscribers.length}`)
       

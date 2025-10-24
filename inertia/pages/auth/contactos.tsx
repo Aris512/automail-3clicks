@@ -80,7 +80,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     listId: null
   }])
   const [isSavingManual, setIsSavingManual] = useState(false)
-  const [editSelectedListIds, setEditSelectedListIds] = useState<number[]>([])
+  const [editSelectedListId, setEditSelectedListId] = useState<number | null>(null)
 
   // Estados para gestión de listas
   const [editingList, setEditingList] = useState<ListItem | null>(null)
@@ -180,16 +180,16 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
       description: subscriber.description || '',
       status: subscriber.status
     })
-    // Cargar las listas del contacto
-    const subscriberListIds = subscriber.lists ? subscriber.lists.map(list => list.id) : []
-    setEditSelectedListIds(subscriberListIds)
+    // Cargar la primera lista del contacto (o null si no tiene listas)
+    const firstListId = subscriber.lists && subscriber.lists.length > 0 ? subscriber.lists[0].id : null
+    setEditSelectedListId(firstListId)
   }
 
   // Función para cerrar modal de edición
   const handleCloseEdit = () => {
     setEditingSubscriber(null)
     resetEdit()
-    setEditSelectedListIds([])
+    setEditSelectedListId(null)
   }
 
   // Función para enviar formulario de edición
@@ -212,7 +212,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
         },
         body: JSON.stringify({
           ...editData,
-          listIds: editSelectedListIds
+          listIds: editSelectedListId ? [editSelectedListId] : []
         })
       })
       .then(response => response.json())
@@ -229,7 +229,10 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     name: editData.name,
                     email: editData.email,
                     description: editData.description,
-                    status: editData.status as 'active' | 'inactive' | 'archived'
+                    status: editData.status as 'active' | 'inactive' | 'archived',
+                    lists: editSelectedListId ? 
+                      currentLists.filter(list => list.id === editSelectedListId) : 
+                      []
                   }
                 : subscriber
             )
@@ -989,7 +992,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                           : 'bg-orange-500 hover:bg-orange-600'
                       } text-white`}
                     >
-                      {isSavingManual ? 'Guardando...' : `Agregar ${manualContacts.filter(c => c.name.trim() && c.email.trim()).length} Contactos`}
+                      {isSavingManual ? 'Guardando...' : `Agregar Contactos`}
                     </button>
                   </div>
 
@@ -1577,63 +1580,54 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                     </select>
                   </div>
                   
-                  {/* Selección de listas */}
+                  {/* Selección de lista */}
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
-                      Listas Asignadas
+                      Lista Asignada
                     </label>
-                    <div className="space-y-2 max-h-32 overflow-y-auto border border-gray-200 rounded-lg p-3">
+                    <select
+                      value={editSelectedListId || ''}
+                      onChange={(e) => {
+                        const value = e.target.value ? parseInt(e.target.value) : null
+                        setEditSelectedListId(value)
+                      }}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="">Seleccionar lista</option>
                       {currentLists.map((list) => (
-                        <label key={list.id} className="flex items-center space-x-2">
-                          <input
-                            type="checkbox"
-                            checked={editSelectedListIds.includes(list.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setEditSelectedListIds([...editSelectedListIds, list.id])
-                              } else {
-                                setEditSelectedListIds(editSelectedListIds.filter(id => id !== list.id))
-                              }
-                            }}
-                            className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
-                          />
-                          <span className="text-sm text-gray-700">{list.name}</span>
-                          {list.isActivated && (
-                            <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                              Predeterminada
-                            </span>
-                          )}
-                        </label>
+                        <option key={list.id} value={list.id}>
+                          {list.name}
+                          {list.isActivated && ' (Predeterminada)'}
+                        </option>
                       ))}
-                      {currentLists.length === 0 && (
-                        <p className="text-sm text-gray-500 italic">No hay listas disponibles.</p>
-                      )}
-                    </div>
+                    </select>
+                    <p className="text-xs text-gray-500 mt-1">
+                      Selecciona una lista para asignar al contacto
+                    </p>
+                  </div>
+                  
+                  {/* Botones dentro del formulario */}
+                  <div className="flex justify-end space-x-3 mt-6 pt-4 border-t border-gray-200">
+                    <button
+                      type="button"
+                      onClick={handleCloseEdit}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={editProcessing}
+                      className={`px-4 py-2 rounded-lg transition-colors ${
+                        editProcessing 
+                          ? 'bg-gray-400 cursor-not-allowed' 
+                          : 'bg-orange-500 hover:bg-orange-600'
+                      } text-white`}
+                    >
+                      {editProcessing ? 'Guardando...' : 'Guardar Cambios'}
+                    </button>
                   </div>
                 </form>
-              </div>
-              
-              <div className="px-6 py-4 border-t border-gray-200 flex-shrink-0">
-                <div className="flex justify-end space-x-3">
-                  <button
-                    type="button"
-                    onClick={handleCloseEdit}
-                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={editProcessing}
-                    className={`px-4 py-2 rounded-lg transition-colors ${
-                      editProcessing 
-                        ? 'bg-gray-400 cursor-not-allowed' 
-                        : 'bg-orange-500 hover:bg-orange-600'
-                    } text-white`}
-                  >
-                    {editProcessing ? 'Guardando...' : 'Guardar Cambios'}
-                  </button>
-                </div>
               </div>
             </div>
           </div>
