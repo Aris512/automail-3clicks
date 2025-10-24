@@ -151,6 +151,19 @@ router.get('/configuracion-tenant', ({ inertia, response, auth }: HttpContext) =
   })
 }).use(middleware.auth())
 
+// Ruta para demostración del editor Tiptap
+router.get('/editor-demo', ({ inertia, response, auth }: HttpContext) => {
+  response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
+  response.header('Pragma', 'no-cache')
+  response.header('Expires', '0')
+  response.header('X-Frame-Options', 'DENY')
+  response.header('X-Content-Type-Options', 'nosniff')
+  
+  return inertia.render('editor-demo', {
+    user: auth.user
+  })
+}).use(middleware.auth())
+
 // Rutas de autenticación - Backend (API)
 router.post('/login', [LoginController, 'login'])
 router.post('/logout', [LoginController, 'logout'])

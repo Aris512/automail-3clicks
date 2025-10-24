@@ -1431,7 +1431,7 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
             )}
 
             {/* Contact List */}
-            <div className="bg-white rounded-lg shadow-sm border">
+            <div className="bg-white rounded-lg shadow-sm border mt-8">
               <div className="px-6 py-4 border-b border-gray-200">
                 <div className="flex items-center justify-between">
                   <h3 className="text-lg font-semibold text-gray-900">Lista de Contactos</h3>
