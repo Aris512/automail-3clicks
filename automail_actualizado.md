@@ -74,11 +74,19 @@ campaigns
 
 campaign_stages
   - id, tenant_id, campaign_id, stage_number, name
-  - delay_days, delay_hours, created_at, updated_at
+  - starts_at, created_at, updated_at
 
 templates
   - id, tenant_id, stage_id, name, subject, body_markdown
   - available_variables, active, created_at, updated_at
+
+  pivot entre templates-attachments /* USAR TIKTRAP PARA LOS TEMPLATES DE MANERA VISUAL*/
+
+templates_attachments (pivot_table)
+  id, tennat_id, attachment_id, template_id, created_at, updated_at
+
+attachments
+- id, tennat_id, path, name, file_name
 
 subscribers
   - id, tenant_id, name, email, description
