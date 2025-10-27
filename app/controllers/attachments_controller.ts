@@ -61,9 +61,18 @@ export default class AttachmentsController {
         size: file.size!
       })
 
+      console.log('✅ [ATTACHMENT STORE] Attachment creado:', attachment.id)
+      console.log('📁 [ATTACHMENT STORE] Path:', attachment.path)
+
       return response.json({
         success: true,
-        data: attachment
+        data: {
+          id: attachment.id,
+          path: attachment.path,
+          name: attachment.name,
+          fileName: attachment.fileName,
+          size: attachment.size
+        }
       })
     } catch (error) {
       console.error('Error uploading file:', error)

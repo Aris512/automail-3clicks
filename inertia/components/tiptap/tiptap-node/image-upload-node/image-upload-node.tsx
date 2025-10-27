@@ -156,6 +156,7 @@ function useFileUpload(options: UploadOptions) {
       if (!url) throw new Error("Upload failed: No URL returned")
 
       if (!abortController.signal.aborted) {
+        console.log('✅ Upload completo, actualizando preview con URL:', url)
         setFileItems((prev) =>
           prev.map((item) =>
             item.id === fileId
@@ -401,13 +402,19 @@ const ImageUploadPreview: React.FC<ImageUploadPreviewProps> = ({
 
   React.useEffect(() => {
     if (isImage && fileItem.file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setImagePreview(reader.result as string)
+      // Si ya hay una URL después de subir, usarla
+      if (fileItem.url) {
+        setImagePreview(fileItem.url)
+      } else {
+        // Si aún se está subiendo, mostrar preview local
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          setImagePreview(reader.result as string)
+        }
+        reader.readAsDataURL(fileItem.file)
       }
-      reader.readAsDataURL(fileItem.file)
     }
-  }, [fileItem.file, isImage])
+  }, [fileItem.file, isImage, fileItem.url])
 
   React.useEffect(() => {
     if (isPDF && fileItem.file) {
@@ -533,6 +540,13 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
   const { accept, limit, maxSize } = props.node.attrs
   const inputRef = React.useRef<HTMLInputElement>(null)
   const extension = props.extension
+  
+  // Estado para mantener la preview de la imagen después de subirla
+  const [uploadedImages, setUploadedImages] = React.useState<Array<{
+    url: string
+    filename: string
+    filesize: number
+  }>>([])
 
   const uploadOptions: UploadOptions = {
     maxSize,
@@ -550,6 +564,14 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
     const urls = await uploadFiles(files)
 
     if (urls.length > 0) {
+      // Guardar la información de las imágenes subidas para mostrar la preview persistente
+      const newUploadedImages = urls.map((url, index) => ({
+        url,
+        filename: files[index]?.name || 'image',
+        filesize: files[index]?.size || 0
+      }))
+      setUploadedImages(newUploadedImages)
+      
       const pos = props.getPos()
 
       if (isValidPosition(pos)) {
@@ -623,6 +645,7 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
   }
 
   const hasFiles = fileItems.length > 0
+  const hasUploadedImages = uploadedImages.length > 0
 
   return (
     <NodeViewWrapper
@@ -630,34 +653,43 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
       tabIndex={0}
       onClick={handleClick}
     >
-      {!hasFiles && (
+      {!hasFiles && !hasUploadedImages && (
         <ImageUploadDragArea onFile={handleUpload}>
           <DropZoneContent maxSize={maxSize} limit={limit} />
         </ImageUploadDragArea>
       )}
 
+      {/* Mostrar preview mientras se sube */}
       {hasFiles && (
         <div className="tiptap-image-upload-previews">
-          {fileItems.length > 1 && (
-            <div className="tiptap-image-upload-header">
-              <span>Uploading {fileItems.length} files</span>
-              <Button
-                type="button"
-                data-style="ghost"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  clearAllFiles()
-                }}
-              >
-                Clear All
-              </Button>
-            </div>
-          )}
           {fileItems.map((fileItem) => (
             <ImageUploadPreview
               key={fileItem.id}
               fileItem={fileItem}
               onRemove={() => removeFileItem(fileItem.id)}
+            />
+          ))}
+        </div>
+      )}
+
+      {/* Mostrar preview persistente después de subir */}
+      {!hasFiles && hasUploadedImages && (
+        <div className="tiptap-image-upload-previews">
+          {uploadedImages.map((image, index) => (
+            <ImageUploadPreview
+              key={index}
+              fileItem={{
+                id: `uploaded-${index}`,
+                file: new File([], image.filename),
+                progress: 100,
+                status: 'success',
+                url: image.url
+              }}
+              onRemove={() => {
+                const newImages = [...uploadedImages]
+                newImages.splice(index, 1)
+                setUploadedImages(newImages)
+              }}
             />
           ))}
         </div>

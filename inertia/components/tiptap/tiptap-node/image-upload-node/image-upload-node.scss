@@ -205,12 +205,14 @@
       }
 
       .tiptap-image-preview-thumbnail {
-        width: 3rem;
-        height: 3rem;
+        width: 4rem;
+        height: 4rem;
         border-radius: var(--tt-radius-md, 0.5rem);
         overflow: hidden;
         flex-shrink: 0;
         background-color: var(--tt-gray-light-200);
+        border: 1px solid var(--tiptap-image-upload-border);
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 
         img {
           width: 100%;

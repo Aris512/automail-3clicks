@@ -1,8 +1,12 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Template from '#models/template'
 import TenantUser from '#models/tenant_user'
+import Attachment from '#models/attachment'
+import TemplateAttachment from '#models/templates_attachment'
 import db from '@adonisjs/lucid/services/db'
 import { inject } from '@adonisjs/core'
+import fs from 'fs/promises'
+import path from 'path'
 
 @inject()
 export default class TemplatesController {
@@ -18,6 +22,54 @@ export default class TemplatesController {
       if (!error.message.includes('already')) {
         console.log('⚠️ No se pudo modificar stage_id (ya debe ser nullable):', error.message)
       }
+    }
+  }
+
+  /**
+   * Extraer URLs de imágenes del HTML y asociarlas con la plantilla
+   */
+  private async associateImagesWithTemplate(templateId: number, tenantId: number, htmlContent: string) {
+    try {
+      // Extraer todas las URLs de imágenes (que empiecen con /uploads/attachments/)
+      const imageUrlRegex = /src=["'](\/uploads\/attachments\/[^"']+)["']/g
+      const matches = htmlContent.matchAll(imageUrlRegex)
+      const imageUrls: string[] = []
+      
+      for (const match of matches) {
+        if (match[1]) {
+          imageUrls.push(match[1])
+        }
+      }
+
+      console.log(`🖼️ [ASSOCIATE] Encontradas ${imageUrls.length} imágenes para asociar`)
+
+      // Para cada URL, buscar el attachment correspondiente y crear la relación
+      for (const imageUrl of imageUrls) {
+        const attachment = await Attachment.query()
+          .where('tenantId', tenantId)
+          .where('path', imageUrl)
+          .first()
+
+        if (attachment) {
+          // Verificar si la relación ya existe
+          const existingRelation = await TemplateAttachment.query()
+            .where('templateId', templateId)
+            .where('attachmentId', attachment.id)
+            .first()
+
+          if (!existingRelation) {
+            await TemplateAttachment.create({
+              tenantId: tenantId,
+              templateId: templateId,
+              attachmentId: attachment.id
+            })
+            console.log(`✅ [ASSOCIATE] Imagen asociada: ${imageUrl}`)
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error associating images:', error)
+      // No fallar la creación de la plantilla si hay error asociando imágenes
     }
   }
   /**
@@ -121,6 +173,9 @@ export default class TemplatesController {
       console.log('✅ [STORE] Plantilla creada exitosamente:', template.id)
       console.log('📏 [STORE] Tamaño del contenido:', bodyContent.length, 'caracteres')
 
+      // Extraer URLs de imágenes del HTML y crear relaciones en templates_attachments
+      await this.associateImagesWithTemplate(template.id, tenantUser.tenantId, bodyContent)
+
       return response.json({
         success: true,
         message: 'Plantilla creada exitosamente',
@@ -174,6 +229,11 @@ export default class TemplatesController {
     template.merge(data)
     await template.save()
 
+    // Re-asociar imágenes si el contenido cambió
+    if (data.bodyMarkdown) {
+      await this.associateImagesWithTemplate(template.id, tenantUser.tenantId, data.bodyMarkdown)
+    }
+
     return response.json({
       success: true,
       message: 'Plantilla actualizada exitosamente',
@@ -214,6 +274,46 @@ export default class TemplatesController {
       })
     }
 
+    // Obtener todos los attachments relacionados con esta plantilla
+    const templateAttachments = await TemplateAttachment.query()
+      .where('templateId', id)
+      .preload('attachment')
+
+    console.log(`📎 [DESTROY] Encontrados ${templateAttachments.length} attachments asociados`)
+
+    // Eliminar archivos físicos y registros de attachments
+    for (const templateAttachment of templateAttachments) {
+      if (templateAttachment.attachment) {
+        const attachment = templateAttachment.attachment
+        
+        try {
+          // Eliminar archivo físico
+          const filePath = path.join(process.cwd(), 'public', attachment.path)
+          
+          // Verificar si el archivo existe antes de intentar eliminarlo
+          try {
+            await fs.access(filePath)
+            await fs.unlink(filePath)
+            console.log(`✅ [DESTROY] Archivo eliminado: ${attachment.path}`)
+          } catch (fsError: any) {
+            if (fsError.code !== 'ENOENT') {
+              console.error(`⚠️ [DESTROY] Error al eliminar archivo ${attachment.path}:`, fsError.message)
+            }
+          }
+
+          // Eliminar el registro de attachment
+          await Attachment.query()
+            .where('id', attachment.id)
+            .delete()
+          
+          console.log(`✅ [DESTROY] Attachment eliminado de BD: ${attachment.id}`)
+        } catch (error) {
+          console.error(`❌ [DESTROY] Error al eliminar attachment ${templateAttachment.id}:`, error)
+        }
+      }
+    }
+
+    // Eliminar la plantilla
     await template.delete()
 
     return response.json({

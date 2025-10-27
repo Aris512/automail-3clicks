@@ -24,9 +24,13 @@ export default class TemplateAttachment extends BaseModel {
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 
-  @belongsTo(() => Template)
+  @belongsTo(() => Template, {
+    foreignKey: 'templateId'
+  })
   declare template: any
 
-  @belongsTo(() => Attachment)
+  @belongsTo(() => Attachment, {
+    foreignKey: 'attachmentId'
+  })
   declare attachment: any
 }
