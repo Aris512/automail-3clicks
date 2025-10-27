@@ -1,5 +1,5 @@
-@import '../../@/styles/_variables.scss';
-@import '../../@/styles/_keyframe-animations.scss';
+@import '../styles/_variables.scss';
+@import '../styles/_keyframe-animations.scss';
 @import '../components/tiptap-templates/simple/simple-editor.scss';
 
 @tailwind base;
@@ -321,4 +321,32 @@
 
 .ProseMirror sub {
   vertical-align: sub;
+}
+
+/* Estilos para imágenes en el editor */
+.ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+  margin: 1em auto;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.ProseMirror img.ProseMirror-selectednode {
+  outline: 3px solid #0066cc;
+  outline-offset: 2px;
+}
+
+.ProseMirror a[href$=".pdf"] {
+  color: #e74c3c;
+  font-weight: 500;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ProseMirror a[href$=".pdf"]:hover {
+  text-decoration: underline;
 }

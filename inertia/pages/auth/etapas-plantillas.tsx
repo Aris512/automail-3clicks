@@ -220,12 +220,12 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
 
                 <div>
                   <Label htmlFor="content" className="text-sm font-medium mb-2 block">Contenido del Email</Label>
-                  <div className="border border-gray-200 rounded-lg shadow-sm bg-white">
+                  <div className="border border-gray-200 rounded-lg shadow-sm bg-white h-[600px] overflow-hidden">
                     <SimpleEditor
                       content={formData.content}
                       onChange={(content: string) => setFormData({ ...formData, content })}
                       placeholder="Escribe el contenido de tu plantilla aquí... Puedes usar negrita, cursiva, listas y más."
-                      className="min-h-[400px]"
+                      className="h-full"
                     />
                   </div>
                 </div>
