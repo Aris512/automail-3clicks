@@ -208,3 +208,7 @@ router.get('/templates/:id', [TemplatesController, 'show']).use(middleware.auth(
 router.put('/templates/:id', [TemplatesController, 'update']).use(middleware.auth())
 router.delete('/templates/:id', [TemplatesController, 'destroy']).use(middleware.auth())
 
+// Rutas para attachments
+const AttachmentsController = () => import('#controllers/attachments_controller')
+router.post('/attachments', [AttachmentsController, 'store']).use(middleware.auth())
+

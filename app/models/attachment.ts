@@ -19,9 +19,6 @@ export default class Attachment extends BaseModel {
   declare fileName: string
 
   @column()
-  declare mimeType?: string
-
-  @column()
   declare size?: number
 
   @column.dateTime({ autoCreate: true })

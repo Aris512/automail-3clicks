@@ -6,6 +6,24 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Estilos para preview de plantillas con imágenes */
+.preview-content img {
+  max-width: 100% !important;
+  height: auto !important;
+  border-radius: 4px;
+  display: block;
+  margin: 0.5rem 0;
+  object-fit: contain;
+}
+
+.preview-content {
+  overflow: hidden;
+}
+
+.preview-content * {
+  max-width: 100%;
+}
+
 /* Animaciones personalizadas para las páginas de autenticación */
 @layer utilities {
   .animate-fade-in {

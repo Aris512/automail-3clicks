@@ -302,9 +302,8 @@ export const handleImageUpload = async (
     )
   }
 
-  // For demo/testing: Simulate upload progress. In production, replace the following code
-  // with your own upload implementation.
-  for (let progress = 0; progress <= 100; progress += 10) {
+  // Simular progreso de subida
+  for (let progress = 0; progress <= 90; progress += 10) {
     if (abortSignal?.aborted) {
       throw new Error("Upload cancelled")
     }
@@ -312,19 +311,38 @@ export const handleImageUpload = async (
     onProgress?.({ progress })
   }
 
-  // Return a data URL for the file (this allows images to work without a server)
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      if (reader.result) {
-        resolve(reader.result as string)
-      } else {
-        reject(new Error("Failed to read file"))
-      }
+  try {
+    // Subir archivo al servidor
+    const formData = new FormData()
+    formData.append('file', file)
+    
+    // Obtener token CSRF
+    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+    
+    const response = await fetch('/attachments', {
+      method: 'POST',
+      headers: {
+        'X-CSRF-TOKEN': csrfToken,
+        'Accept': 'application/json'
+      },
+      body: formData,
+      signal: abortSignal
+    })
+
+    onProgress?.({ progress: 100 })
+    
+    const data = await response.json()
+    
+    if (data.success && data.data) {
+      // Retornar la URL completa del archivo subido
+      return data.data.path
+    } else {
+      throw new Error(data.message || 'Error al subir la imagen')
     }
-    reader.onerror = () => reject(new Error("Failed to read file"))
-    reader.readAsDataURL(file)
-  })
+  } catch (error) {
+    console.error('Error uploading image:', error)
+    throw error
+  }
 }
 
 type ProtocolOptions = {

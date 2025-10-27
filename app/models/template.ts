@@ -18,7 +18,10 @@ export default class Template extends BaseModel {
   @column()
   declare subject: string
 
-  @column()
+  @column({
+    columnName: 'body_markdown',
+    serializeAs: 'bodyMarkdown'
+  })
   declare bodyMarkdown: string
 
   @column({ serializeAs: 'available_variables' })

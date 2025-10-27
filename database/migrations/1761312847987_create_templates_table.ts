@@ -7,14 +7,14 @@ export default class extends BaseSchema {
     this.schema.createTable(this.tableName, (table) => {
       table.increments('id')
       table.integer('tenant_id').unsigned().notNullable().index()
-      table.integer('stage_id').unsigned().notNullable().index()
+      table.integer('stage_id').unsigned().nullable().index()
       table.string('name', 255).notNullable()
       table.string('subject', 500).notNullable()
-      table.text('body_markdown').notNullable
+      table.text('body_markdown').notNullable()
       table.jsonb('available_variables').defaultTo('[]')
       table.boolean('active').defaultTo(true)
-      table.timestamp('created_at')
-      table.timestamp('updated_at')
+      table.timestamp('created_at').notNullable()
+      table.timestamp('updated_at').notNullable()
 
 
 

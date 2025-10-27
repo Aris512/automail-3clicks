@@ -7,6 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
 import { Plus, FileText, Edit, Trash2 } from 'lucide-react'
+import { useToast } from '~/hooks/useToast'
+import ToastContainer from '~/components/ui/toast-container'
 
 interface User {
   id: number
@@ -29,6 +31,7 @@ interface EtapasPlantillasProps {
 }
 
 export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
+  const { toasts, showSuccess, showError, removeToast } = useToast()
   const [showForm, setShowForm] = useState(false)
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(false)
@@ -43,6 +46,11 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   })
   const [editingId, setEditingId] = useState<number | null>(null)
 
+  // Función helper para obtener el token CSRF
+  const getCsrfToken = () => {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+  }
+
   // Cargar plantillas
   const loadTemplates = async () => {
     setLoading(true)
@@ -55,9 +63,12 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       const data = await response.json()
       if (data.success) {
         setTemplates(data.data)
+      } else {
+        showError('Error al cargar', 'No se pudieron cargar las plantillas')
       }
     } catch (error) {
       console.error('Error loading templates:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
     } finally {
       setLoading(false)
     }
@@ -70,7 +81,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   // Guardar plantilla
   const handleSave = async () => {
     if (!formData.name.trim() || !formData.subject.trim() || !formData.content.trim()) {
-      alert('Por favor completa todos los campos')
+      showError('Campos incompletos', 'Por favor completa todos los campos obligatorios')
       return
     }
 
@@ -79,11 +90,21 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       const url = editingId ? `/templates/${editingId}` : '/templates'
       const method = editingId ? 'PUT' : 'POST'
       
+      console.log('📤 [FRONTEND] Enviando datos:', {
+        url,
+        method,
+        name: formData.name,
+        subject: formData.subject,
+        contentLength: formData.content.length,
+        active: formData.active
+      })
+      
       const response = await fetch(url, {
         method,
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
         },
         body: JSON.stringify({
           name: formData.name,
@@ -93,18 +114,26 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
         })
       })
 
+      console.log('📥 [FRONTEND] Respuesta recibida:', response.status)
       const data = await response.json()
+      console.log('📥 [FRONTEND] Datos respuesta:', data)
       
       if (data.success) {
-        alert(editingId ? 'Plantilla actualizada exitosamente' : 'Plantilla creada exitosamente')
+        showSuccess(
+          editingId ? 'Plantilla actualizada' : 'Plantilla creada',
+          editingId 
+            ? 'La plantilla se ha actualizado correctamente' 
+            : 'La plantilla se ha creado exitosamente',
+          3000
+        )
         resetForm()
         loadTemplates()
       } else {
-        alert(data.message || 'Error al guardar la plantilla')
+        showError('Error al guardar', data.message || 'No se pudo guardar la plantilla')
       }
     } catch (error) {
-      console.error('Error saving template:', error)
-      alert('Error al guardar la plantilla')
+      console.error('❌ [FRONTEND] Error saving template:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor. Inténtalo de nuevo.')
     } finally {
       setSaving(false)
     }
@@ -121,20 +150,21 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
         method: 'DELETE',
         headers: {
           'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
         }
       })
 
       const data = await response.json()
       
       if (data.success) {
-        alert('Plantilla eliminada exitosamente')
+        showSuccess('Plantilla eliminada', 'La plantilla se ha eliminado correctamente', 3000)
         loadTemplates()
       } else {
-        alert(data.message || 'Error al eliminar la plantilla')
+        showError('Error al eliminar', data.message || 'No se pudo eliminar la plantilla')
       }
     } catch (error) {
       console.error('Error deleting template:', error)
-      alert('Error al eliminar la plantilla')
+      showError('Error de conexión', 'No se pudo conectar con el servidor. Inténtalo de nuevo.')
     }
   }
 
@@ -170,6 +200,9 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       <Head title="Etapas y Plantillas" />
       
       <AppSidebar user={user} pageTitle="Etapas y Plantillas">
+        {/* Toasts */}
+        <ToastContainer toasts={toasts} onClose={removeToast} />
+        
         <div className="w-full px-12 py-6 space-y-6">
           {/* Header */}
           <div className="flex justify-between items-center border-b pb-4">
@@ -299,10 +332,15 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                         
                         <div>
                           <p className="text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">Preview</p>
-                          <div 
-                            className="text-sm text-gray-600 line-clamp-4 bg-gray-50 p-2 rounded border border-gray-100"
-                            dangerouslySetInnerHTML={{ __html: template.bodyMarkdown }}
-                          />
+                          <div className="preview-content text-sm text-gray-600 bg-gray-50 p-2 rounded border border-gray-100 max-h-40 overflow-hidden">
+                            <div 
+                              dangerouslySetInnerHTML={{ __html: template.bodyMarkdown }}
+                              style={{
+                                maxHeight: '160px',
+                                overflow: 'hidden'
+                              }}
+                            />
+                          </div>
                         </div>
                         
                         <div className="flex items-center justify-between pt-2 border-t">

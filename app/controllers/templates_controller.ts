@@ -1,10 +1,25 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Template from '#models/template'
 import TenantUser from '#models/tenant_user'
+import db from '@adonisjs/lucid/services/db'
 import { inject } from '@adonisjs/core'
 
 @inject()
 export default class TemplatesController {
+  /**
+   * Modificar la tabla templates para hacer stage_id nullable
+   */
+  private async ensureStageIdNullable() {
+    try {
+      await db.rawQuery('ALTER TABLE templates ALTER COLUMN stage_id DROP NOT NULL;')
+      console.log('✅ Columna stage_id modificada a nullable')
+    } catch (error: any) {
+      // Ignorar si ya es nullable o si no existe
+      if (!error.message.includes('already')) {
+        console.log('⚠️ No se pudo modificar stage_id (ya debe ser nullable):', error.message)
+      }
+    }
+  }
   /**
    * Obtener todas las plantillas del tenant del usuario
    */
@@ -39,7 +54,9 @@ export default class TemplatesController {
    * Crear una nueva plantilla
    */
   async store({ request, response, auth }: HttpContext) {
+    console.log('🚀 [STORE] Iniciando creación de plantilla')
     const user = auth.user!
+    console.log(`👤 [STORE] Usuario autenticado: ${user.email} (ID: ${user.id})`)
     
     // Obtener el tenant del usuario
     const tenantUser = await TenantUser.query()
@@ -48,13 +65,17 @@ export default class TemplatesController {
       .first()
 
     if (!tenantUser) {
+      console.log('❌ [STORE] Usuario no tiene acceso a ningún tenant activo')
       return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
     }
 
+    console.log(`🏢 [STORE] Tenant encontrado: ID ${tenantUser.tenantId}`)
+
     const data = request.only(['name', 'subject', 'bodyMarkdown', 'availableVariables', 'active'])
+    console.log('📋 [STORE] Datos recibidos:', { ...data, bodyMarkdown: `${data.bodyMarkdown?.substring(0, 50)}...` })
     
     // Validaciones
     if (!data.name || !data.name.trim()) {
@@ -79,14 +100,26 @@ export default class TemplatesController {
     }
 
     try {
-      const template = await Template.create({
+      // Asegurar que stage_id es nullable antes de crear la plantilla
+      await this.ensureStageIdNullable()
+      
+      console.log('💾 [STORE] Intentando crear plantilla...')
+      
+      // Truncar bodyMarkdown si es muy largo (por seguridad)
+      const bodyContent = data.bodyMarkdown.substring(0, 10000000) // Máximo ~10MB de texto
+      
+      const templateData: any = {
         tenantId: tenantUser.tenantId,
         name: data.name,
         subject: data.subject,
-        bodyMarkdown: data.bodyMarkdown,
+        bodyMarkdown: bodyContent,
         availableVariables: data.availableVariables || [],
         active: data.active !== undefined ? data.active : true,
-      })
+      }
+      
+      const template = await Template.create(templateData)
+      console.log('✅ [STORE] Plantilla creada exitosamente:', template.id)
+      console.log('📏 [STORE] Tamaño del contenido:', bodyContent.length, 'caracteres')
 
       return response.json({
         success: true,
@@ -94,6 +127,7 @@ export default class TemplatesController {
         data: template
       })
     } catch (error) {
+      console.error('❌ [STORE] Error al crear la plantilla:', error)
       return response.status(500).json({
         success: false,
         message: 'Error al crear la plantilla',
