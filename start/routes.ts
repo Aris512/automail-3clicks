@@ -22,6 +22,9 @@ const SubscribersController = () => import('#controllers/subscribers_controller'
 const ListsController = () => import('#controllers/lists_controller')
 const SubscribersListsController = () => import('#controllers/subscribers_lists_controller')
 
+// Importar controlador de plantillas
+const TemplatesController = () => import('#controllers/templates_controller')
+
 // Rutas de API (sin Inertia) - Deben ir ANTES de las rutas de Inertia
 const EmailsController = () => import('#controllers/emails_controller')
 router.post('/test-email', [EmailsController, 'sendEmail'])
@@ -151,19 +154,6 @@ router.get('/configuracion-tenant', ({ inertia, response, auth }: HttpContext) =
   })
 }).use(middleware.auth())
 
-// Ruta para demostración del editor Tiptap
-router.get('/editor-demo', ({ inertia, response, auth }: HttpContext) => {
-  response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
-  response.header('Pragma', 'no-cache')
-  response.header('Expires', '0')
-  response.header('X-Frame-Options', 'DENY')
-  response.header('X-Content-Type-Options', 'nosniff')
-  
-  return inertia.render('editor-demo', {
-    user: auth.user
-  })
-}).use(middleware.auth())
-
 // Rutas de autenticación - Backend (API)
 router.post('/login', [LoginController, 'login'])
 router.post('/logout', [LoginController, 'logout'])
@@ -210,4 +200,11 @@ router.put('/subscribers-lists/:id', [SubscribersListsController, 'update']).use
 router.delete('/subscribers-lists/:id', [SubscribersListsController, 'destroy']).use(middleware.auth())
 router.post('/subscribers-lists/add-to-lists', [SubscribersListsController, 'addToLists']).use(middleware.auth())
 router.post('/subscribers-lists/remove-from-lists', [SubscribersListsController, 'removeFromLists']).use(middleware.auth())
+
+// Rutas para plantillas
+router.get('/templates', [TemplatesController, 'index']).use(middleware.auth())
+router.post('/templates', [TemplatesController, 'store']).use(middleware.auth())
+router.get('/templates/:id', [TemplatesController, 'show']).use(middleware.auth())
+router.put('/templates/:id', [TemplatesController, 'update']).use(middleware.auth())
+router.delete('/templates/:id', [TemplatesController, 'destroy']).use(middleware.auth())
 

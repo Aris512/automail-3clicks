@@ -80,8 +80,6 @@ templates
   - id, tenant_id, stage_id, name, subject, body_markdown
   - available_variables, active, created_at, updated_at
 
-  pivot entre templates-attachments /* USAR TIKTRAP PARA LOS TEMPLATES DE MANERA VISUAL*/
-
 templates_attachments (pivot_table)
   id, tennat_id, attachment_id, template_id, created_at, updated_at
 
