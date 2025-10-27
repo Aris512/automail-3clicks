@@ -116,11 +116,11 @@ const MainToolbarContent = ({
         <MarkButton type="code" />
         <MarkButton type="underline" />
         {!isMobile ? (
-          <ColorHighlightPopover editor={null} hideWhenUnavailable={false} />
+          <ColorHighlightPopover />
         ) : (
           <ColorHighlightPopoverButton onClick={onHighlighterClick} />
         )}
-        {!isMobile ? <LinkPopover editor={null} /> : <LinkButton onClick={onLinkClick} />}
+        {!isMobile ? <LinkPopover /> : <LinkButton onClick={onLinkClick} />}
       </ToolbarGroup>
 
       <ToolbarSeparator />
@@ -212,21 +212,17 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       TaskList,
       TaskItem.configure({ nested: true }),
       Highlight.configure({ multicolor: true }),
-      Image.configure({
-        inline: true,
-        allowBase64: true,
-      }),
+      Image,
       Typography,
       Superscript,
       Subscript,
       Selection,
       ImageUploadNode.configure({
-        accept: "image/*,.pdf",
+        accept: "image/*,.pdf,application/pdf",
         maxSize: MAX_FILE_SIZE,
-        limit: 5,
+        limit: 3,
         upload: handleImageUpload,
         onError: (error: Error) => console.error("Upload failed:", error),
-        type: 'image',
       }),
     ],
     content: initialContent || "",
