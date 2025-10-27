@@ -9,19 +9,32 @@ import "~/components/tiptap/tiptap-node/image-upload-node/image-upload-node.scss
 import { focusNextNode, isValidPosition } from "~/lib/tiptap-utils"
 
 // Lazy load react-pdf only on client side
-let Document: any = null
-let Page: any = null
-let pdfjs: any = null
+const loadReactPdf = async () => {
+  try {
+    const module = await import('react-pdf')
+    const pdfjs = await import('pdfjs-dist')
+    
+    if (pdfjs.GlobalWorkerOptions) {
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString()
+    }
+    
+    return {
+      Document: module.Document,
+      Page: module.Page,
+    }
+  } catch (error) {
+    console.error('Failed to load react-pdf:', error)
+    return { Document: null, Page: null }
+  }
+}
+
+let reactPdfComponents: { Document: any; Page: any } | null = null
 
 if (typeof window !== 'undefined') {
-  import('react-pdf').then((module) => {
-    Document = module.Document
-    Page = module.Page
-    pdfjs = module.pdfjs
-    if (pdfjs) {
-      pdfjs.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjs.version}/pdf.worker.min.js`
-    }
-  })
+  reactPdfComponents = null // Will be loaded when needed
 }
 
 export interface FileItem {
@@ -384,6 +397,7 @@ const ImageUploadPreview: React.FC<ImageUploadPreviewProps> = ({
   const [imagePreview, setImagePreview] = React.useState<string | null>(null)
   const [pdfUrl, setPdfUrl] = React.useState<string | null>(null)
   const [numPages, setNumPages] = React.useState<number>(0)
+  const [pdfComponents, setPdfComponents] = React.useState<{ Document: any; Page: any } | null>(null)
 
   React.useEffect(() => {
     if (isImage && fileItem.file) {
@@ -404,6 +418,14 @@ const ImageUploadPreview: React.FC<ImageUploadPreviewProps> = ({
       reader.readAsDataURL(fileItem.file)
     }
   }, [fileItem.file, isPDF])
+
+  React.useEffect(() => {
+    if (isPDF && !pdfComponents && typeof window !== 'undefined') {
+      loadReactPdf().then(components => {
+        setPdfComponents(components)
+      })
+    }
+  }, [isPDF, pdfComponents])
 
   const onDocumentLoadSuccess = ({ numPages }: { numPages: number }) => {
     setNumPages(numPages)
@@ -427,22 +449,22 @@ const ImageUploadPreview: React.FC<ImageUploadPreviewProps> = ({
           )}
           {isPDF && pdfUrl && (
             <div className="tiptap-pdf-preview">
-              {Document && Page ? (
-                <Document
+              {pdfComponents?.Document && pdfComponents?.Page ? (
+                <pdfComponents.Document
                   file={pdfUrl}
                   onLoadSuccess={onDocumentLoadSuccess}
                   loading={<div className="tiptap-pdf-loading">Loading PDF...</div>}
                   error={<div className="tiptap-pdf-error">Failed to load PDF</div>}
                 >
-                  <Page
+                  <pdfComponents.Page
                     pageNumber={1}
                     width={120}
                     renderTextLayer={false}
                     renderAnnotationLayer={false}
                   />
-                </Document>
+                </pdfComponents.Document>
               ) : (
-                <div className="tiptap-pdf-loading">PDF</div>
+                <div className="tiptap-pdf-loading">Loading PDF...</div>
               )}
             </div>
           )}
@@ -537,21 +559,27 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
           const isPDF = file?.type === 'application/pdf'
           
           if (isPDF) {
-            // For PDFs, insert as a link in a paragraph
+            // For PDFs, insert as a simple paragraph with link
             return {
               type: 'paragraph',
-              content: [{
-                type: 'text',
-                text: `📄 ${file.name}`,
-                marks: [{
-                  type: 'link',
-                  attrs: {
-                    href: url,
-                    target: '_blank',
-                    rel: 'noopener noreferrer',
-                  }
-                }]
-              }]
+              content: [
+                {
+                  type: 'text',
+                  text: '📄 ',
+                },
+                {
+                  type: 'text',
+                  marks: [{
+                    type: 'link',
+                    attrs: {
+                      href: url,
+                      target: '_blank',
+                      rel: 'noopener noreferrer',
+                    }
+                  }],
+                  text: file.name
+                }
+              ]
             }
           } else {
             // For images, insert as image node
