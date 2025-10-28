@@ -31,11 +31,7 @@ const loadReactPdf = async () => {
   }
 }
 
-let reactPdfComponents: { Document: any; Page: any } | null = null
-
-if (typeof window !== 'undefined') {
-  reactPdfComponents = null // Will be loaded when needed
-}
+// reactPdfComponents is loaded lazily when needed
 
 export interface FileItem {
   /**
@@ -557,7 +553,7 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
     onError: extension.options.onError,
   }
 
-  const { fileItems, uploadFiles, removeFileItem, clearAllFiles } =
+  const { fileItems, uploadFiles, removeFileItem } =
     useFileUpload(uploadOptions)
 
   const handleUpload = async (files: File[]) => {
@@ -580,46 +576,17 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
         const nodes = urls.map((url, index) => {
           const file = files[index]
           const filename = file?.name.replace(/\.[^/.]+$/, "") || "unknown"
-          const isPDF = file?.type === 'application/pdf'
-          
-          console.log('📄 Tipo de archivo:', file.type, 'URL:', url)
-          
-          if (isPDF) {
-            // For PDFs, insert as a simple paragraph with link
-            return {
-              type: 'paragraph',
-              content: [
-                {
-                  type: 'text',
-                  text: '📄 ',
-                },
-                {
-                  type: 'text',
-                  marks: [{
-                    type: 'link',
-                    attrs: {
-                      href: url,
-                      target: '_blank',
-                      rel: 'noopener noreferrer',
-                    }
-                  }],
-                  text: file.name
-                }
-              ]
-            }
-          } else {
-            // For images, insert as image node
-            const imageNode = {
-              type: 'image',
-              attrs: {
-                src: url,
-                alt: filename,
-                title: filename,
-              },
-            }
-            console.log('🖼️ Nodo de imagen creado:', imageNode)
-            return imageNode
+          // Los PDF ahora se convierten a imagen, así que siempre insertamos como imagen
+          const imageNode = {
+            type: 'image',
+            attrs: {
+              src: url,
+              alt: filename,
+              title: filename,
+            },
           }
+          console.log('🖼️ Nodo de imagen creado:', imageNode)
+          return imageNode
         })
 
         console.log('📝 Nodos a insertar:', nodes)

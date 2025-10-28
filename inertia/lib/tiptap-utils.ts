@@ -280,6 +280,79 @@ export function isNodeTypeSelected(
 }
 
 /**
+ * Converts the first page of a PDF to an image (PNG)
+ * @param pdfFile The PDF file to convert
+ * @returns Promise resolving to a File object containing the PNG image
+ */
+async function convertPdfToImage(pdfFile: File): Promise<File> {
+  try {
+    // Dynamic import of pdfjs-dist
+    const pdfjsLib = await import('pdfjs-dist')
+    
+    // Set worker
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+        'pdfjs-dist/build/pdf.worker.min.mjs',
+        import.meta.url
+      ).toString()
+    }
+
+    // Read PDF file as array buffer
+    const arrayBuffer = await pdfFile.arrayBuffer()
+    
+    // Load PDF
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer })
+    const pdf = await loadingTask.promise
+    
+    // Get first page
+    const page = await pdf.getPage(1)
+    
+    // Create viewport (higher scale for better quality)
+    const viewport = page.getViewport({ scale: 2.0 })
+    
+    // Create canvas
+    const canvas = document.createElement('canvas')
+    const context = canvas.getContext('2d')
+    
+    if (!context) {
+      throw new Error('No se pudo obtener el contexto del canvas')
+    }
+    
+    canvas.height = viewport.height
+    canvas.width = viewport.width
+    
+    // Render PDF page to canvas
+    await page.render({
+      canvasContext: context,
+      viewport: viewport
+    } as any).promise
+    
+    // Convert canvas to blob
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (blob) {
+          resolve(blob)
+        } else {
+          reject(new Error('No se pudo convertir el canvas a blob'))
+        }
+      }, 'image/png')
+    })
+    
+    // Create File from blob
+    const imageFile = new File(
+      [blob],
+      pdfFile.name.replace(/\.pdf$/i, '.png'),
+      { type: 'image/png' }
+    )
+    
+    return imageFile
+  } catch (error) {
+    console.error('Error converting PDF to image:', error)
+    throw new Error('No se pudo convertir el PDF a imagen')
+  }
+}
+
+/**
  * Handles image upload with progress tracking and abort capability
  * @param file The file to upload
  * @param onProgress Optional callback for tracking upload progress
@@ -303,16 +376,28 @@ export const handleImageUpload = async (
   }
 
   try {
+    // Detectar si es PDF y convertirlo a imagen
+    let fileToUpload = file
+    if (file.type === 'application/pdf') {
+      console.log('📄 Detectado PDF, convirtiendo primera página a imagen...')
+      onProgress?.({ progress: 10 })
+      fileToUpload = await convertPdfToImage(file)
+      onProgress?.({ progress: 40 })
+      console.log('✅ PDF convertido a imagen:', fileToUpload.name)
+    }
+    
     // Subir archivo al servidor
     const formData = new FormData()
-    formData.append('file', file)
+    formData.append('file', fileToUpload)
     
     // Obtener token CSRF
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
     
     // Iniciar simulación de progreso en paralelo con la petición
     const progressPromise = (async () => {
-      for (let i = 0; i <= 90; i += 3) {
+      const startProgress = file.type === 'application/pdf' ? 40 : 0
+      const endProgress = 90
+      for (let i = startProgress; i <= endProgress; i += 3) {
         if (abortSignal?.aborted) {
           throw new Error("Upload cancelled")
         }
