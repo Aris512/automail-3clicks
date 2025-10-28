@@ -302,15 +302,6 @@ export const handleImageUpload = async (
     )
   }
 
-  // Simular progreso de subida
-  for (let progress = 0; progress <= 90; progress += 10) {
-    if (abortSignal?.aborted) {
-      throw new Error("Upload cancelled")
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    onProgress?.({ progress })
-  }
-
   try {
     // Subir archivo al servidor
     const formData = new FormData()
@@ -319,7 +310,19 @@ export const handleImageUpload = async (
     // Obtener token CSRF
     const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
     
-    const response = await fetch('/attachments', {
+    // Iniciar simulación de progreso en paralelo con la petición
+    const progressPromise = (async () => {
+      for (let i = 0; i <= 90; i += 3) {
+        if (abortSignal?.aborted) {
+          throw new Error("Upload cancelled")
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100)) // 100ms por paso
+        onProgress?.({ progress: i })
+      }
+    })()
+    
+    // Realizar la petición real al servidor
+    const response = await fetch('/attachments/temp', {
       method: 'POST',
       headers: {
         'X-CSRF-TOKEN': csrfToken,
@@ -328,17 +331,22 @@ export const handleImageUpload = async (
       body: formData,
       signal: abortSignal
     })
-
-    onProgress?.({ progress: 100 })
     
+    // Esperar a que termine la simulación de progreso (si aún no terminó)
+    await progressPromise
+    
+    // Validar respuesta
     const data = await response.json()
     
-    if (data.success && data.data) {
-      // Retornar la URL completa del archivo subido
-      return data.data.path
-    } else {
+    if (!response.ok || !data.success || !data.data) {
       throw new Error(data.message || 'Error al subir la imagen')
     }
+    
+    // Solo marcar 100% si todo fue exitoso
+    onProgress?.({ progress: 100 })
+    
+    // Retornar la URL completa del archivo subido
+    return data.data.path
   } catch (error) {
     console.error('Error uploading image:', error)
     throw error

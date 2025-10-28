@@ -9,6 +9,7 @@ import { Label } from '~/components/ui/label'
 import { Plus, FileText, Edit, Trash2 } from 'lucide-react'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
+import { AlertDialog } from '~/components/ui/alert-dialog'
 
 interface User {
   id: number
@@ -36,6 +37,11 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   const [templates, setTemplates] = useState<Template[]>([])
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
+  
+  // Estado para el diálogo de confirmación
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
+  const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null)
   
   // Formulario
   const [formData, setFormData] = useState({
@@ -139,14 +145,22 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     }
   }
 
-  // Eliminar plantilla
-  const handleDelete = async (id: number) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta plantilla?')) {
-      return
+  // Abrir diálogo de confirmación para eliminar
+  const handleDeleteClick = (id: number) => {
+    const template = templates.find(t => t.id === id)
+    if (template) {
+      setTemplateToDelete(template)
+      setDeleteTargetId(id)
+      setShowDeleteDialog(true)
     }
+  }
+
+  // Confirmar eliminación de plantilla
+  const confirmDelete = async () => {
+    if (!deleteTargetId) return
 
     try {
-      const response = await fetch(`/templates/${id}`, {
+      const response = await fetch(`/templates/${deleteTargetId}`, {
         method: 'DELETE',
         headers: {
           'Accept': 'application/json',
@@ -165,6 +179,10 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     } catch (error) {
       console.error('Error deleting template:', error)
       showError('Error de conexión', 'No se pudo conectar con el servidor. Inténtalo de nuevo.')
+    } finally {
+      setShowDeleteDialog(false)
+      setDeleteTargetId(null)
+      setTemplateToDelete(null)
     }
   }
 
@@ -314,7 +332,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => handleDelete(template.id)}
+                            onClick={() => handleDeleteClick(template.id)}
                             title="Eliminar"
                             className="h-8 w-8 p-0"
                           >
@@ -365,6 +383,23 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
             )}
           </div>
         </div>
+
+        {/* Diálogo de confirmación para eliminar */}
+        <AlertDialog
+          open={showDeleteDialog}
+          onOpenChange={setShowDeleteDialog}
+          title="¿Eliminar plantilla?"
+          description={`¿Estás seguro de que deseas eliminar la plantilla "${templateToDelete?.name}"? Esta acción no se puede deshacer.`}
+          onConfirm={confirmDelete}
+          onCancel={() => {
+            setShowDeleteDialog(false)
+            setDeleteTargetId(null)
+            setTemplateToDelete(null)
+          }}
+          confirmText="Eliminar"
+          cancelText="Cancelar"
+          variant="destructive"
+        />
       </AppSidebar>
     </>
   )

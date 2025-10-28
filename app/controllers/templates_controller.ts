@@ -26,6 +26,89 @@ export default class TemplatesController {
   }
 
   /**
+   * Procesar archivos temporales y moverlos a attachments
+   * Retorna el HTML actualizado con las nuevas URLs
+   */
+  private async processTempFiles(tenantId: number, htmlContent: string): Promise<string> {
+    try {
+      // Extraer URLs temporales del HTML
+      const tempImageRegex = /src=["'](\/uploads\/temp\/[^"']+)["']/g
+      const matches = Array.from(htmlContent.matchAll(tempImageRegex))
+      
+      if (matches.length === 0) {
+        console.log('📝 [PROCESS TEMP] No se encontraron archivos temporales')
+        return htmlContent
+      }
+
+      console.log(`🔄 [PROCESS TEMP] Procesando ${matches.length} archivos temporales`)
+
+      let updatedContent = htmlContent
+
+      for (const match of matches) {
+        const tempUrl = match[1]
+        const fullPath = match[1]
+        
+        // Construir la ruta física del archivo temporal
+        const tempFilePath = path.join(process.cwd(), 'public', fullPath)
+        
+        // Verificar que el archivo existe
+        try {
+          await fs.access(tempFilePath)
+        } catch {
+          console.warn(`⚠️ [PROCESS TEMP] Archivo temporal no encontrado: ${tempFilePath}`)
+          continue
+        }
+
+        // Leer el archivo
+        const fileStats = await fs.stat(tempFilePath)
+
+        // Generar nombre único para el archivo final
+        const fileName = path.basename(fullPath)
+        const attachmentDir = path.join(process.cwd(), 'public', 'uploads', 'attachments', tenantId.toString())
+        await fs.mkdir(attachmentDir, { recursive: true })
+
+        // Mover el archivo a attachments usando rename (más seguro en Windows)
+        const finalPath = path.join(attachmentDir, fileName)
+        
+        try {
+          // Intentar mover (rename) el archivo
+          await fs.rename(tempFilePath, finalPath)
+          console.log(`✅ [PROCESS TEMP] Archivo movido: ${tempUrl} -> /uploads/attachments/${tenantId}/${fileName}`)
+        } catch (error: any) {
+          // Si rename falla por permisos, intentar copiar y eliminar
+          if (error.code === 'EPERM' || error.code === 'EXDEV') {
+            await fs.copyFile(tempFilePath, finalPath)
+            await fs.unlink(tempFilePath)
+            console.log(`✅ [PROCESS TEMP] Archivo copiado y temporal eliminado: ${tempUrl} -> /uploads/attachments/${tenantId}/${fileName}`)
+          } else {
+            throw error
+          }
+        }
+
+        // Crear registro en attachments
+        const attachmentPath = `/uploads/attachments/${tenantId}/${fileName}`
+        await Attachment.create({
+          tenantId: tenantId,
+          path: attachmentPath,
+          name: fileName,
+          fileName: fileName,
+          size: fileStats.size
+        })
+
+        console.log(`✅ [PROCESS TEMP] Registro en BD creado para: ${attachmentPath}`)
+
+        // Actualizar la URL en el contenido
+        updatedContent = updatedContent.replace(tempUrl, attachmentPath)
+      }
+
+      return updatedContent
+    } catch (error) {
+      console.error('❌ [PROCESS TEMP] Error procesando archivos temporales:', error)
+      return htmlContent // Retornar contenido original si hay error
+    }
+  }
+
+  /**
    * Extraer URLs de imágenes del HTML y asociarlas con la plantilla
    */
   private async associateImagesWithTemplate(templateId: number, tenantId: number, htmlContent: string) {
@@ -157,8 +240,11 @@ export default class TemplatesController {
       
       console.log('💾 [STORE] Intentando crear plantilla...')
       
+      // Procesar archivos temporales y obtener contenido actualizado
+      const processedContent = await this.processTempFiles(tenantUser.tenantId, data.bodyMarkdown)
+      
       // Truncar bodyMarkdown si es muy largo (por seguridad)
-      const bodyContent = data.bodyMarkdown.substring(0, 10000000) // Máximo ~10MB de texto
+      const bodyContent = processedContent.substring(0, 10000000) // Máximo ~10MB de texto
       
       const templateData: any = {
         tenantId: tenantUser.tenantId,
@@ -225,6 +311,12 @@ export default class TemplatesController {
     }
 
     const data = request.only(['name', 'subject', 'bodyMarkdown', 'availableVariables', 'active'])
+    
+    // Procesar archivos temporales si hay contenido
+    if (data.bodyMarkdown) {
+      const processedContent = await this.processTempFiles(tenantUser.tenantId, data.bodyMarkdown)
+      data.bodyMarkdown = processedContent
+    }
     
     template.merge(data)
     await template.save()

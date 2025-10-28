@@ -211,4 +211,5 @@ router.delete('/templates/:id', [TemplatesController, 'destroy']).use(middleware
 // Rutas para attachments
 const AttachmentsController = () => import('#controllers/attachments_controller')
 router.post('/attachments', [AttachmentsController, 'store']).use(middleware.auth())
+router.post('/attachments/temp', [AttachmentsController, 'storeTemp']).use(middleware.auth())
 
