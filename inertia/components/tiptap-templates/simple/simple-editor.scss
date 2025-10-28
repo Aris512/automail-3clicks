@@ -80,3 +80,64 @@ body,
     padding: 0.75rem;
   }
 }
+
+/* Estilos para miniaturas de imágenes */
+.tiptap.ProseMirror img,
+.simple-editor .tiptap.ProseMirror img {
+  display: block !important;
+  max-width: 100% !important;
+  height: auto !important;
+  margin: 1rem auto !important;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  object-fit: contain !important;
+  
+  &:hover {
+    transform: scale(1.02);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+  
+  /* Cuando la imagen está cargando */
+  &:not(.loaded) {
+    opacity: 0.5;
+    background: linear-gradient(
+      90deg,
+      rgba(0, 0, 0, 0.05) 25%,
+      rgba(0, 0, 0, 0.1) 50%,
+      rgba(0, 0, 0, 0.05) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  
+  /* Cuando la imagen está cargada */
+  &.loaded {
+    opacity: 1;
+    transition: opacity 0.3s ease;
+  }
+  
+  /* Asegurar que todas las rutas de imágenes se muestren */
+  &[src^="/uploads/"], 
+  &[src^="/uploads/temp/"],
+  &[src^="data:"],
+  &[src^="http"],
+  &[src^="https"] {
+    max-width: 100% !important;
+    width: auto !important;
+    height: auto !important;
+    object-fit: contain !important;
+    display: block !important;
+  }
+}
+
+/* Animación shimmer para carga */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}

@@ -212,7 +212,13 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       TaskList,
       TaskItem.configure({ nested: true }),
       Highlight.configure({ multicolor: true }),
-      Image,
+      Image.configure({
+        inline: false,
+        allowBase64: true,
+        HTMLAttributes: {
+          class: 'loaded',
+        },
+      }),
       Typography,
       Superscript,
       Subscript,

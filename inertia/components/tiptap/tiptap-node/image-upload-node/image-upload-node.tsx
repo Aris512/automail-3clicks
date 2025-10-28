@@ -564,6 +564,8 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
     const urls = await uploadFiles(files)
 
     if (urls.length > 0) {
+      console.log('📸 URLs recibidas:', urls)
+      
       // Guardar la información de las imágenes subidas para mostrar la preview persistente
       const newUploadedImages = urls.map((url, index) => ({
         url,
@@ -579,6 +581,8 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
           const file = files[index]
           const filename = file?.name.replace(/\.[^/.]+$/, "") || "unknown"
           const isPDF = file?.type === 'application/pdf'
+          
+          console.log('📄 Tipo de archivo:', file.type, 'URL:', url)
           
           if (isPDF) {
             // For PDFs, insert as a simple paragraph with link
@@ -605,7 +609,7 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
             }
           } else {
             // For images, insert as image node
-            return {
+            const imageNode = {
               type: 'image',
               attrs: {
                 src: url,
@@ -613,9 +617,13 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
                 title: filename,
               },
             }
+            console.log('🖼️ Nodo de imagen creado:', imageNode)
+            return imageNode
           }
         })
 
+        console.log('📝 Nodos a insertar:', nodes)
+        
         props.editor
           .chain()
           .focus()
@@ -623,6 +631,8 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
           .insertContentAt(pos, nodes)
           .run()
 
+        console.log('✅ Contenido después de insertar:', props.editor.getHTML())
+        
         focusNextNode(props.editor)
       }
     }

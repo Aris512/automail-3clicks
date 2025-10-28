@@ -31,12 +31,17 @@ export default class TemplatesController {
    */
   private async processTempFiles(tenantId: number, htmlContent: string): Promise<string> {
     try {
+      console.log(`\n📁 [PROCESS TEMP] ===============================`)
+      console.log(`📁 [PROCESS TEMP] Iniciando procesamiento de archivos temporales`)
+      console.log(`📁 [PROCESS TEMP] Tenant ID: ${tenantId}`)
+      
       // Extraer URLs temporales del HTML
       const tempImageRegex = /src=["'](\/uploads\/temp\/[^"']+)["']/g
       const matches = Array.from(htmlContent.matchAll(tempImageRegex))
       
       if (matches.length === 0) {
         console.log('📝 [PROCESS TEMP] No se encontraron archivos temporales')
+        console.log(`📁 [PROCESS TEMP] ===============================\n`)
         return htmlContent
       }
 
@@ -44,9 +49,13 @@ export default class TemplatesController {
 
       let updatedContent = htmlContent
 
-      for (const match of matches) {
+      for (let i = 0; i < matches.length; i++) {
+        const match = matches[i]
         const tempUrl = match[1]
         const fullPath = match[1]
+        
+        console.log(`\n📁 [PROCESS TEMP] Procesando archivo ${i + 1}/${matches.length}`)
+        console.log(`📁 [PROCESS TEMP] Archivo temporal: ${tempUrl}`)
         
         // Construir la ruta física del archivo temporal
         const tempFilePath = path.join(process.cwd(), 'public', fullPath)
@@ -61,6 +70,7 @@ export default class TemplatesController {
 
         // Leer el archivo
         const fileStats = await fs.stat(tempFilePath)
+        console.log(`📊 [PROCESS TEMP] Tamaño del archivo: ${fileStats.size} bytes`)
 
         // Generar nombre único para el archivo final
         const fileName = path.basename(fullPath)
@@ -73,7 +83,7 @@ export default class TemplatesController {
         try {
           // Intentar mover (rename) el archivo
           await fs.rename(tempFilePath, finalPath)
-          console.log(`✅ [PROCESS TEMP] Archivo movido: ${tempUrl} -> /uploads/attachments/${tenantId}/${fileName}`)
+          console.log(`✅ [PROCESS TEMP] Archivo movido físicamente: ${tempUrl} -> /uploads/attachments/${tenantId}/${fileName}`)
         } catch (error: any) {
           // Si rename falla por permisos, intentar copiar y eliminar
           if (error.code === 'EPERM' || error.code === 'EXDEV') {
@@ -85,25 +95,69 @@ export default class TemplatesController {
           }
         }
 
-        // Crear registro en attachments
+        // Verificar si el archivo ya existe en attachments antes de crear
         const attachmentPath = `/uploads/attachments/${tenantId}/${fileName}`
-        await Attachment.create({
-          tenantId: tenantId,
-          path: attachmentPath,
-          name: fileName,
-          fileName: fileName,
-          size: fileStats.size
-        })
-
-        console.log(`✅ [PROCESS TEMP] Registro en BD creado para: ${attachmentPath}`)
+        
+        console.log(`🔍 [PROCESS TEMP] Verificando si attachment existe en BD para: ${attachmentPath}`)
+        
+        // Buscar si ya existe un attachment con este path
+        const existingAttachment = await Attachment.query()
+          .where('tenantId', tenantId)
+          .where('path', attachmentPath)
+          .first()
+        
+        if (existingAttachment) {
+          console.log(`🔄 [PROCESS TEMP] Attachment ya existe en BD (ID: ${existingAttachment.id}), actualizando...`)
+          
+          // Registrar valores anteriores para log
+          const oldValues = {
+            name: existingAttachment.name,
+            fileName: existingAttachment.fileName,
+            size: existingAttachment.size
+          }
+          
+          // Actualizar TODOS los campos importantes del attachment existente
+          existingAttachment.name = fileName
+          existingAttachment.fileName = fileName
+          existingAttachment.size = fileStats.size
+          
+          await existingAttachment.save()
+          
+          console.log(`✅ [PROCESS TEMP] Attachment actualizado en BD:`)
+          console.log(`   - ID: ${existingAttachment.id}`)
+          console.log(`   - Path: ${attachmentPath}`)
+          console.log(`   - Name: "${oldValues.name}" -> "${fileName}"`)
+          console.log(`   - FileName: "${oldValues.fileName}" -> "${fileName}"`)
+          console.log(`   - Size: ${oldValues.size} bytes -> ${fileStats.size} bytes`)
+        } else {
+          console.log(`➕ [PROCESS TEMP] Attachment no existe, creando nuevo registro...`)
+          
+          // Crear nuevo registro en attachments
+          const attachment = await Attachment.create({
+            tenantId: tenantId,
+            path: attachmentPath,
+            name: fileName,
+            fileName: fileName,
+            size: fileStats.size
+          })
+          
+          console.log(`✅ [PROCESS TEMP] Nuevo registro creado en BD:`)
+          console.log(`   - ID: ${attachment.id}`)
+          console.log(`   - Path: ${attachmentPath}`)
+          console.log(`   - Tamaño: ${fileStats.size} bytes`)
+        }
 
         // Actualizar la URL en el contenido
         updatedContent = updatedContent.replace(tempUrl, attachmentPath)
       }
 
+      console.log(`✅ [PROCESS TEMP] Todos los archivos temporales procesados exitosamente`)
+      console.log(`📁 [PROCESS TEMP] ===============================\n`)
+
       return updatedContent
     } catch (error) {
       console.error('❌ [PROCESS TEMP] Error procesando archivos temporales:', error)
+      console.log(`📁 [PROCESS TEMP] ===============================\n`)
       return htmlContent // Retornar contenido original si hay error
     }
   }
@@ -113,9 +167,13 @@ export default class TemplatesController {
    */
   private async associateImagesWithTemplate(templateId: number, tenantId: number, htmlContent: string) {
     try {
+      console.log(`\n🖼️ [ASSOCIATE IMAGES] ===============================`)
+      console.log(`🖼️ [ASSOCIATE IMAGES] Template ID: ${templateId}`)
+      console.log(`🖼️ [ASSOCIATE IMAGES] Tenant ID: ${tenantId}`)
+      
       // Extraer todas las URLs de imágenes (que empiecen con /uploads/attachments/)
       const imageUrlRegex = /src=["'](\/uploads\/attachments\/[^"']+)["']/g
-      const matches = htmlContent.matchAll(imageUrlRegex)
+      const matches = Array.from(htmlContent.matchAll(imageUrlRegex))
       const imageUrls: string[] = []
       
       for (const match of matches) {
@@ -124,9 +182,22 @@ export default class TemplatesController {
         }
       }
 
-      console.log(`🖼️ [ASSOCIATE] Encontradas ${imageUrls.length} imágenes para asociar`)
+      console.log(`🖼️ [ASSOCIATE IMAGES] Encontradas ${imageUrls.length} imágenes en el HTML`)
+      
+      if (imageUrls.length > 0) {
+        console.log(`🖼️ [ASSOCIATE IMAGES] URLs encontradas:`)
+        imageUrls.forEach((url, index) => {
+          console.log(`   ${index + 1}. ${url}`)
+        })
+      } else {
+        console.log(`ℹ️ [ASSOCIATE IMAGES] No se encontraron imágenes para asociar`)
+      }
 
       // Para cada URL, buscar el attachment correspondiente y crear la relación
+      let createdCount = 0
+      let skippedCount = 0
+      let notFoundCount = 0
+      
       for (const imageUrl of imageUrls) {
         const attachment = await Attachment.query()
           .where('tenantId', tenantId)
@@ -146,13 +217,145 @@ export default class TemplatesController {
               templateId: templateId,
               attachmentId: attachment.id
             })
-            console.log(`✅ [ASSOCIATE] Imagen asociada: ${imageUrl}`)
+            console.log(`✅ [ASSOCIATE IMAGES] Relación creada: Attachment ID ${attachment.id} -> Template ID ${templateId}`)
+            createdCount++
+          } else {
+            console.log(`⏭️ [ASSOCIATE IMAGES] Relación ya existe: Attachment ID ${attachment.id}`)
+            skippedCount++
+          }
+        } else {
+          console.log(`⚠️ [ASSOCIATE IMAGES] Attachment no encontrado en BD: ${imageUrl}`)
+          notFoundCount++
+        }
+      }
+      
+      console.log(`📊 [ASSOCIATE IMAGES] Resumen:`)
+      console.log(`   - Relaciones creadas: ${createdCount}`)
+      console.log(`   - Relaciones ya existentes: ${skippedCount}`)
+      console.log(`   - Attachments no encontrados: ${notFoundCount}`)
+      console.log(`🖼️ [ASSOCIATE IMAGES] ===============================\n`)
+    } catch (error) {
+      console.error('❌ [ASSOCIATE IMAGES] Error asociando imágenes:', error)
+      // No fallar la creación de la plantilla si hay error asociando imágenes
+    }
+  }
+
+  /**
+   * Eliminar todas las asociaciones de archivos de una plantilla
+   * y reemplazarlas con las nuevas
+   */
+  private async replaceTemplateAttachments(templateId: number, tenantId: number, htmlContent: string) {
+    try {
+      console.log(`\n🔄 [REPLACE ATTACHMENTS] ===============================`)
+      console.log(`🔄 [REPLACE ATTACHMENTS] Iniciando reemplazo de attachments`)
+      console.log(`🔄 [REPLACE ATTACHMENTS] Template ID: ${templateId}`)
+      console.log(`🔄 [REPLACE ATTACHMENTS] Tenant ID: ${tenantId}`)
+      console.log(`🔄 [REPLACE ATTACHMENTS] Tamaño del contenido: ${htmlContent.length} caracteres`)
+      
+      // Obtener las relaciones existentes antes de eliminar
+      const existingRelations = await TemplateAttachment.query()
+        .where('templateId', templateId)
+        .where('tenantId', tenantId)
+        .preload('attachment')
+      
+      console.log(`📋 [REPLACE ATTACHMENTS] Relaciones existentes encontradas: ${existingRelations.length}`)
+      
+      // Guardar IDs de attachments que se van a desasociar
+      const oldAttachmentIds: number[] = []
+      
+      if (existingRelations.length > 0) {
+        console.log(`📋 [REPLACE ATTACHMENTS] Attachments que se van a desasociar:`)
+        existingRelations.forEach((rel, index) => {
+          oldAttachmentIds.push(rel.attachmentId)
+          console.log(`   ${index + 1}. Attachment ID: ${rel.attachmentId}, Path: ${rel.attachment?.path || 'N/A'}`)
+        })
+      }
+      
+      // Eliminar todas las relaciones existentes para esta plantilla
+      const deletedCount = await TemplateAttachment.query()
+        .where('templateId', templateId)
+        .where('tenantId', tenantId)
+        .delete()
+      
+      console.log(`🗑️ [REPLACE ATTACHMENTS] Eliminadas ${deletedCount} relaciones antiguas`)
+
+      // Ahora crear las nuevas relaciones
+      console.log(`🔄 [REPLACE ATTACHMENTS] Creando nuevas relaciones...`)
+      await this.associateImagesWithTemplate(templateId, tenantId, htmlContent)
+      
+      // Extraer URLs de imágenes del nuevo contenido para obtener IDs de los nuevos attachments
+      const imageUrlRegex = /src=["'](\/uploads\/attachments\/[^"']+)["']/g
+      const matches = Array.from(htmlContent.matchAll(imageUrlRegex))
+      const newImagePaths: string[] = []
+      
+      for (const match of matches) {
+        if (match[1]) {
+          newImagePaths.push(match[1])
+        }
+      }
+      
+      // Obtener IDs de los nuevos attachments
+      const newAttachmentIds: number[] = []
+      if (newImagePaths.length > 0) {
+        for (const imagePath of newImagePaths) {
+          const attachment = await Attachment.query()
+            .where('tenantId', tenantId)
+            .where('path', imagePath)
+            .first()
+          
+          if (attachment) {
+            newAttachmentIds.push(attachment.id)
           }
         }
       }
+      
+      console.log(`🔍 [REPLACE ATTACHMENTS] Verificando attachments huérfanos...`)
+      console.log(`   - Attachments antiguos: ${oldAttachmentIds.length}`)
+      console.log(`   - Attachments nuevos: ${newAttachmentIds.length}`)
+      
+      // Identificar attachments huérfanos (los que estaban antes pero no están en los nuevos)
+      const orphanedAttachmentIds = oldAttachmentIds.filter(id => !newAttachmentIds.includes(id))
+      
+      console.log(`🗑️ [REPLACE ATTACHMENTS] Attachments huérfanos a eliminar: ${orphanedAttachmentIds.length}`)
+      
+      // Eliminar attachments huérfanos
+      if (orphanedAttachmentIds.length > 0) {
+        let deletedAttachments = 0
+        for (const orphanId of orphanedAttachmentIds) {
+          try {
+            const orphanAttachment = await Attachment.query()
+              .where('id', orphanId)
+              .where('tenantId', tenantId)
+              .first()
+            
+            if (orphanAttachment) {
+              // Verificar si este attachment aún tiene relaciones con otras plantillas
+              const otherRelations = await TemplateAttachment.query()
+                .where('attachmentId', orphanId)
+                .where('tenantId', tenantId)
+                .first()
+              
+              if (!otherRelations) {
+                // No tiene relaciones con ninguna plantilla, eliminarlo
+                await Attachment.query().where('id', orphanId).delete()
+                console.log(`🗑️ [REPLACE ATTACHMENTS] Attachment huérfano eliminado: ID ${orphanId}`)
+                deletedAttachments++
+              } else {
+                console.log(`⏭️ [REPLACE ATTACHMENTS] Attachment ID ${orphanId} aún tiene relaciones con otras plantillas, NO se elimina`)
+              }
+            }
+          } catch (error) {
+            console.error(`❌ [REPLACE ATTACHMENTS] Error al eliminar attachment ${orphanId}:`, error)
+          }
+        }
+        console.log(`✅ [REPLACE ATTACHMENTS] Eliminados ${deletedAttachments} attachments huérfanos`)
+      }
+      
+      console.log(`✅ [REPLACE ATTACHMENTS] Proceso completado exitosamente`)
+      console.log(`🔄 [REPLACE ATTACHMENTS] ===============================\n`)
     } catch (error) {
-      console.error('Error associating images:', error)
-      // No fallar la creación de la plantilla si hay error asociando imágenes
+      console.error(`❌ [REPLACE ATTACHMENTS] Error reemplazando attachments:`, error)
+      // No fallar la actualización si hay error
     }
   }
   /**
@@ -281,8 +484,14 @@ export default class TemplatesController {
    * Actualizar una plantilla existente
    */
   async update({ params, request, response, auth }: HttpContext) {
+    console.log('\n🚀 [UPDATE TEMPLATE] ===============================')
+    console.log('🚀 [UPDATE TEMPLATE] Iniciando actualización de plantilla')
+    
     const user = auth.user!
     const { id } = params
+    
+    console.log(`👤 [UPDATE TEMPLATE] Usuario: ${user.email} (ID: ${user.id})`)
+    console.log(`📋 [UPDATE TEMPLATE] Template ID a actualizar: ${id}`)
     
     // Obtener el tenant del usuario
     const tenantUser = await TenantUser.query()
@@ -291,11 +500,14 @@ export default class TemplatesController {
       .first()
 
     if (!tenantUser) {
+      console.error('❌ [UPDATE TEMPLATE] Usuario sin tenant activo')
       return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
     }
+
+    console.log(`🏢 [UPDATE TEMPLATE] Tenant ID: ${tenantUser.tenantId}`)
 
     // Verificar que la plantilla existe y pertenece al tenant
     const template = await Template.query()
@@ -304,27 +516,48 @@ export default class TemplatesController {
       .first()
 
     if (!template) {
+      console.error(`❌ [UPDATE TEMPLATE] Plantilla ${id} no encontrada`)
       return response.status(404).json({
         success: false,
         message: 'Plantilla no encontrada'
       })
     }
 
+    console.log(`✅ [UPDATE TEMPLATE] Plantilla encontrada: ${template.name}`)
+
     const data = request.only(['name', 'subject', 'bodyMarkdown', 'availableVariables', 'active'])
+    
+    console.log(`📝 [UPDATE TEMPLATE] Datos recibidos:`, {
+      name: data.name,
+      subject: data.subject,
+      hasBody: !!data.bodyMarkdown,
+      bodyLength: data.bodyMarkdown?.length || 0,
+      active: data.active
+    })
     
     // Procesar archivos temporales si hay contenido
     if (data.bodyMarkdown) {
+      console.log(`📁 [UPDATE TEMPLATE] Procesando archivos temporales...`)
       const processedContent = await this.processTempFiles(tenantUser.tenantId, data.bodyMarkdown)
       data.bodyMarkdown = processedContent
+      console.log(`✅ [UPDATE TEMPLATE] Archivos temporales procesados`)
     }
     
     template.merge(data)
     await template.save()
+    
+    console.log(`💾 [UPDATE TEMPLATE] Plantilla actualizada en BD`)
 
-    // Re-asociar imágenes si el contenido cambió
+    // Reemplazar attachments si el contenido cambió
     if (data.bodyMarkdown) {
-      await this.associateImagesWithTemplate(template.id, tenantUser.tenantId, data.bodyMarkdown)
+      console.log(`🔄 [UPDATE TEMPLATE] Reemplazando attachments...`)
+      await this.replaceTemplateAttachments(template.id, tenantUser.tenantId, data.bodyMarkdown)
+    } else {
+      console.log(`ℹ️ [UPDATE TEMPLATE] No hay contenido nuevo, no se reemplazan attachments`)
     }
+
+    console.log(`✅ [UPDATE TEMPLATE] Plantilla actualizada exitosamente`)
+    console.log('🚀 [UPDATE TEMPLATE] ===============================\n')
 
     return response.json({
       success: true,
@@ -373,39 +606,41 @@ export default class TemplatesController {
 
     console.log(`📎 [DESTROY] Encontrados ${templateAttachments.length} attachments asociados`)
 
-    // Eliminar archivos físicos y registros de attachments
+    // Paso 1: Eliminar las relaciones en templates_attachments
+    const deletedRelations = await TemplateAttachment.query()
+      .where('templateId', id)
+      .where('tenantId', tenantUser.tenantId)
+      .delete()
+    
+    console.log(`🗑️ [DESTROY] Eliminadas ${deletedRelations} relaciones en templates_attachments`)
+
+    // Paso 2: Obtener IDs únicos de attachments para eliminar
+    const attachmentIds = templateAttachments
+      .map(ta => ta.attachment?.id)
+      .filter((id): id is number => id !== undefined)
+    
+    console.log(`📎 [DESTROY] IDs de attachments a eliminar:`, attachmentIds)
+
+    // Paso 3: Eliminar registros de attachments de la BD
     for (const templateAttachment of templateAttachments) {
       if (templateAttachment.attachment) {
         const attachment = templateAttachment.attachment
         
         try {
-          // Eliminar archivo físico
-          const filePath = path.join(process.cwd(), 'public', attachment.path)
-          
-          // Verificar si el archivo existe antes de intentar eliminarlo
-          try {
-            await fs.access(filePath)
-            await fs.unlink(filePath)
-            console.log(`✅ [DESTROY] Archivo eliminado: ${attachment.path}`)
-          } catch (fsError: any) {
-            if (fsError.code !== 'ENOENT') {
-              console.error(`⚠️ [DESTROY] Error al eliminar archivo ${attachment.path}:`, fsError.message)
-            }
-          }
-
-          // Eliminar el registro de attachment
+          // Eliminar el registro de attachment de la BD
           await Attachment.query()
             .where('id', attachment.id)
             .delete()
           
           console.log(`✅ [DESTROY] Attachment eliminado de BD: ${attachment.id}`)
+          
         } catch (error) {
-          console.error(`❌ [DESTROY] Error al eliminar attachment ${templateAttachment.id}:`, error)
+          console.error(`❌ [DESTROY] Error al eliminar attachment ${attachment.id} de BD:`, error)
         }
       }
     }
 
-    // Eliminar la plantilla
+    // Paso 4: Eliminar la plantilla
     await template.delete()
 
     return response.json({
