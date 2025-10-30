@@ -24,7 +24,6 @@ import {
 } from "~/components/tiptap/tiptap-ui-primitive/toolbar"
 
 // --- Tiptap Node ---
-import { ImageUploadNode } from "~/components/tiptap/tiptap-node/image-upload-node/image-upload-node-extension"
 import { HorizontalRule } from "~/components/tiptap/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension"
 import "~/components/tiptap/tiptap-node/blockquote-node/blockquote-node.scss"
 import "~/components/tiptap/tiptap-node/code-block-node/code-block-node.scss"
@@ -36,7 +35,6 @@ import "~/components/tiptap/tiptap-node/paragraph-node/paragraph-node.scss"
 
 // --- Tiptap UI ---
 import { HeadingDropdownMenu } from "~/components/tiptap/tiptap-ui/heading-dropdown-menu"
-import { ImageUploadButton } from "~/components/tiptap/tiptap-ui/image-upload-button"
 import { ListDropdownMenu } from "~/components/tiptap/tiptap-ui/list-dropdown-menu"
 import { BlockquoteButton } from "~/components/tiptap/tiptap-ui/blockquote-button"
 import { CodeBlockButton } from "~/components/tiptap/tiptap-ui/code-block-button"
@@ -58,6 +56,7 @@ import { UndoRedoButton } from "~/components/tiptap/tiptap-ui/undo-redo-button"
 import { ArrowLeftIcon } from "~/components/tiptap/tiptap-icons/arrow-left-icon"
 import { HighlighterIcon } from "~/components/tiptap/tiptap-icons/highlighter-icon"
 import { LinkIcon } from "~/components/tiptap/tiptap-icons/link-icon"
+import { ImagePlusIcon } from "~/components/tiptap/tiptap-icons/image-plus-icon"
 
 // --- Hooks ---
 import { useIsMobile } from "~/hooks/use-mobile"
@@ -65,7 +64,7 @@ import { useWindowSize } from "~/hooks/use-window-size"
 import { useCursorVisibility } from "~/hooks/use-cursor-visibility"
 
 // --- Lib ---
-import { handleImageUpload, MAX_FILE_SIZE } from "~/lib/tiptap-utils"
+import { ImagePreview } from "~/components/tiptap/tiptap-node/image-preview-node/image-preview-extension"
 
 // --- Styles ---
 import "./simple-editor.scss"
@@ -80,10 +79,12 @@ interface SimpleEditorProps {
 const MainToolbarContent = ({
   onHighlighterClick,
   onLinkClick,
+  onUploadClick,
   isMobile,
 }: {
   onHighlighterClick: () => void
   onLinkClick: () => void
+  onUploadClick: () => void
   isMobile: boolean
 }) => {
   return (
@@ -142,7 +143,22 @@ const MainToolbarContent = ({
       <ToolbarSeparator />
 
       <ToolbarGroup>
-        <ImageUploadButton text="Add" />
+        <Button
+          type="button"
+          data-style="ghost"
+          role="button"
+          tabIndex={-1}
+          aria-label="Add image"
+          tooltip="Add image"
+          onClick={(e) => {
+            e.preventDefault()
+            e.stopPropagation()
+            onUploadClick()
+          }}
+        >
+          <ImagePlusIcon className="tiptap-button-icon" />
+          <span className="tiptap-button-text">Add</span>
+        </Button>
       </ToolbarGroup>
 
       <Spacer />
@@ -186,6 +202,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
     "main" | "highlighter" | "link"
   >("main")
   const toolbarRef = React.useRef<HTMLDivElement>(null)
+  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -223,13 +240,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       Superscript,
       Subscript,
       Selection,
-      ImageUploadNode.configure({
-        accept: "image/*,.pdf,application/pdf",
-        maxSize: MAX_FILE_SIZE,
-        limit: 3,
-        upload: handleImageUpload,
-        onError: (error: Error) => console.error("Upload failed:", error),
-      }),
+      ImagePreview,
     ],
     content: initialContent || "",
     onUpdate: onChange ? ({ editor }) => {
@@ -272,6 +283,13 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
             <MainToolbarContent
               onHighlighterClick={() => setMobileView("highlighter")}
               onLinkClick={() => setMobileView("link")}
+              onUploadClick={() => {
+                const input = fileInputRef.current
+                if (input) {
+                  input.value = ""
+                  input.click()
+                }
+              }}
               isMobile={isMobile}
             />
           ) : (
@@ -286,6 +304,20 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
           editor={editor}
           role="presentation"
           className="simple-editor-content"
+        />
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          style={{ display: "none" }}
+          onChange={(e) => {
+            const files = e.target.files
+            if (!files || !editor) return
+            // Guarda archivos para que el comando de ImagePreview los inserte
+            ;(editor.storage as any).imagePreview.__pendingFiles = Array.from(files)
+            editor.commands.insertPreviewImages()
+          }}
         />
       </EditorContext.Provider>
     </div>

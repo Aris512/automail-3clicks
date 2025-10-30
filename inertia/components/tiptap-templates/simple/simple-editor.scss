@@ -85,7 +85,8 @@ body,
 .tiptap.ProseMirror img,
 .simple-editor .tiptap.ProseMirror img {
   display: block !important;
-  max-width: 100% !important;
+  width: 100% !important;
+  max-width: 400px !important;
   height: auto !important;
   margin: 1rem auto !important;
   border-radius: 8px;
@@ -124,8 +125,8 @@ body,
   &[src^="data:"],
   &[src^="http"],
   &[src^="https"] {
-    max-width: 100% !important;
-    width: auto !important;
+    width: 100% !important;
+    max-width: 400px !important;
     height: auto !important;
     object-fit: contain !important;
     display: block !important;
