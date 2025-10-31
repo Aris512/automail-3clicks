@@ -213,3 +213,69 @@ const AttachmentsController = () => import('#controllers/attachments_controller'
 router.post('/attachments', [AttachmentsController, 'store']).use(middleware.auth())
 router.post('/attachments/temp', [AttachmentsController, 'storeTemp']).use(middleware.auth())
 
+// Ruta para servir archivos temporales (debe ir después de otras rutas pero antes de rutas catch-all)
+router.get('/uploads/temp/:tenantId/:fileName', async ({ params, response }: HttpContext) => {
+  const fs = await import('fs/promises')
+  const path = await import('path')
+  
+  const { tenantId, fileName } = params
+  let filePath = path.join(process.cwd(), 'public', 'uploads', 'temp', tenantId, fileName)
+  
+  try {
+    // Verificar que el path existe
+    const stats = await fs.stat(filePath)
+    
+    // Si es un directorio, buscar el archivo dentro de él (esto puede pasar con file.move en Windows)
+    if (stats.isDirectory()) {
+      // Buscar archivos dentro del directorio
+      const files = await fs.readdir(filePath)
+      if (files.length > 0) {
+        // Tomar el primer archivo encontrado dentro del directorio
+        filePath = path.join(filePath, files[0])
+      } else {
+        return response.status(404).json({
+          success: false,
+          message: 'Directorio vacío'
+        })
+      }
+    }
+    
+    // Verificar que ahora es un archivo
+    const fileStats = await fs.stat(filePath)
+    if (!fileStats.isFile()) {
+      return response.status(404).json({
+        success: false,
+        message: 'No es un archivo válido'
+      })
+    }
+    
+    // Determinar Content-Type basado en la extensión original
+    const ext = path.extname(fileName).toLowerCase()
+    const contentTypes: Record<string, string> = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.pdf': 'application/pdf',
+    }
+    const contentType = contentTypes[ext] || 'application/octet-stream'
+    
+    // Leer el archivo y enviarlo
+    const fileBuffer = await fs.readFile(filePath)
+    
+    response.header('Content-Type', contentType)
+    response.header('Content-Length', fileStats.size.toString())
+    response.header('Cache-Control', 'public, max-age=31536000')
+    
+    return response.send(fileBuffer)
+  } catch (error: any) {
+    console.error('[SERVE TEMP FILE] Error:', error.message)
+    console.error('[SERVE TEMP FILE] Path intentado:', filePath)
+    return response.status(404).json({
+      success: false,
+      message: 'Archivo no encontrado'
+    })
+  }
+}).use(middleware.auth())
+

@@ -6,7 +6,7 @@ import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
-import { Plus, FileText, Edit, Trash2 } from 'lucide-react'
+import { Plus, FileText, Edit, Trash2, Eye, X } from 'lucide-react'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { AlertDialog } from '~/components/ui/alert-dialog'
@@ -42,6 +42,9 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<number | null>(null)
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null)
+  
+  // Estado para el modal de visualización
+  const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null)
   
   // Formulario
   const [formData, setFormData] = useState({
@@ -213,6 +216,16 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     setShowForm(false)
   }
 
+  // Abrir modal de visualización
+  const handleView = (template: Template) => {
+    setViewingTemplate(template)
+  }
+
+  // Cerrar modal de visualización
+  const handleCloseView = () => {
+    setViewingTemplate(null)
+  }
+
   return (
     <>
       <Head title="Etapas y Plantillas" />
@@ -323,6 +336,15 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                           <Button
                             variant="ghost"
                             size="sm"
+                            onClick={() => handleView(template)}
+                            title="Visualizar"
+                            className="h-8 w-8 p-0"
+                          >
+                            <Eye className="h-4 w-4 text-blue-500" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
                             onClick={() => handleEdit(template.id)}
                             title="Editar"
                             className="h-8 w-8 p-0"
@@ -388,18 +410,106 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
         <AlertDialog
           open={showDeleteDialog}
           onOpenChange={setShowDeleteDialog}
-          title="¿Eliminar plantilla?"
-          description={`¿Estás seguro de que deseas eliminar la plantilla "${templateToDelete?.name}"? Esta acción no se puede deshacer.`}
+          title="⚠️ Confirmar eliminación"
+          description={
+            templateToDelete ? (
+              <div className="space-y-2">
+                <p className="font-medium text-gray-900">
+                  ¿Estás seguro de que deseas eliminar la plantilla?
+                </p>
+                <div className="bg-red-50 border border-red-200 rounded-md p-3">
+                  <p className="text-sm font-semibold text-red-800">
+                    "{templateToDelete.name}"
+                  </p>
+                  {templateToDelete.subject && (
+                    <p className="text-xs text-red-600 mt-1">
+                      Asunto: {templateToDelete.subject}
+                    </p>
+                  )}
+                </div>
+                <p className="text-sm text-gray-600 mt-2">
+                  Esta acción es <strong>permanente</strong> y no se puede deshacer. 
+                  La plantilla será eliminada de forma definitiva.
+                </p>
+              </div>
+            ) : (
+              '¿Estás seguro de que deseas eliminar esta plantilla? Esta acción no se puede deshacer.'
+            ) as React.ReactNode
+          }
           onConfirm={confirmDelete}
           onCancel={() => {
             setShowDeleteDialog(false)
             setDeleteTargetId(null)
             setTemplateToDelete(null)
           }}
-          confirmText="Eliminar"
+          confirmText="Sí, eliminar"
           cancelText="Cancelar"
           variant="destructive"
         />
+
+        {/* Modal de visualización de plantilla */}
+        {viewingTemplate && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+              {/* Header */}
+              <div className="flex items-center justify-between p-6 border-b">
+                <div>
+                  <h3 className="text-xl font-semibold text-gray-900">
+                    {viewingTemplate.name}
+                  </h3>
+                  <p className="text-sm text-gray-500 mt-1">
+                    Asunto: {viewingTemplate.subject}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleCloseView}
+                  className="h-8 w-8 p-0"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Content */}
+              <div className="flex-1 overflow-y-auto p-6 bg-white">
+                <div className="prose max-w-none">
+                  <div 
+                    dangerouslySetInnerHTML={{ __html: viewingTemplate.bodyMarkdown }}
+                    className="preview-content prose-headings:font-bold"
+                    style={{
+                      lineHeight: '1.6',
+                      color: '#333'
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="flex items-center justify-between p-6 border-t bg-gray-50">
+                <div className="flex items-center gap-4">
+                  <span className={`text-xs font-medium px-2 py-1 rounded ${
+                    viewingTemplate.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    {viewingTemplate.active ? '✓ Activa' : '✗ Inactiva'}
+                  </span>
+                  <span className="text-xs text-gray-500">
+                    Creada: {new Date(viewingTemplate.createdAt).toLocaleDateString('es-ES', { 
+                      day: 'numeric', 
+                      month: 'short', 
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit'
+                    })}
+                  </span>
+                </div>
+                <Button onClick={handleCloseView} variant="outline">
+                  Cerrar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </AppSidebar>
     </>
   )

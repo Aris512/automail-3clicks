@@ -52,8 +52,39 @@ export default class AttachmentsController {
       await fs.mkdir(tempUploadDir, { recursive: true })
       
       // Guardar archivo temporalmente
+      // Leer el contenido del archivo ANTES de moverlo para evitar problemas con file.move() en Windows
       const filePath = path.join(tempUploadDir, fileName)
-      await file.move(filePath, { overwrite: true })
+      const tempFilePath = file.tmpPath!
+      
+      // Leer el contenido del archivo temporal ANTES de intentar moverlo
+      let fileContent: Buffer
+      try {
+        fileContent = await fs.readFile(tempFilePath)
+      } catch (readError) {
+        throw new Error(`No se pudo leer el archivo temporal: ${readError}`)
+      }
+      
+      // Si el path ya existe como directorio o archivo, eliminarlo primero
+      try {
+        const existingStats = await fs.stat(filePath)
+        if (existingStats.isDirectory()) {
+          await fs.rmdir(filePath, { recursive: true })
+        } else if (existingStats.isFile()) {
+          await fs.unlink(filePath)
+        }
+      } catch {
+        // El archivo/directorio no existe, continuar
+      }
+      
+      // Escribir el archivo directamente en lugar de usar file.move()
+      // Esto evita problemas donde file.move() crea un directorio en Windows
+      await fs.writeFile(filePath, fileContent)
+      
+      // Verificar que se guardó correctamente como archivo
+      const finalStats = await fs.stat(filePath)
+      if (!finalStats.isFile()) {
+        throw new Error('El archivo no se guardó correctamente después de escribir')
+      }
       
       const tempPath = `/uploads/temp/${tenantUser.tenantId}/${fileName}`
 

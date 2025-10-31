@@ -4,13 +4,15 @@ interface AlertDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   title: string
-  description: string
+  description: string | React.ReactNode
   onConfirm: () => void
   onCancel?: () => void
   confirmText?: string
   cancelText?: string
   variant?: "default" | "destructive"
 }
+
+type AlertDialogDescription = string | React.ReactElement | React.ReactNode
 
 export function AlertDialog({
   open,
@@ -42,9 +44,13 @@ export function AlertDialog({
           <h3 className="text-lg font-semibold text-gray-900 mb-2">
             {title}
           </h3>
-          <p className="text-sm text-gray-600 mb-6">
-            {description}
-          </p>
+          <div className="text-sm text-gray-600 mb-6">
+            {typeof description === 'string' ? (
+              <p>{description}</p>
+            ) : (
+              description
+            )}
+          </div>
           
           <div className="flex gap-3 justify-end">
             <button

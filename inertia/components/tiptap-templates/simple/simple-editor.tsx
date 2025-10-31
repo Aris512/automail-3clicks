@@ -65,6 +65,7 @@ import { useCursorVisibility } from "~/hooks/use-cursor-visibility"
 
 // --- Lib ---
 import { ImagePreview } from "~/components/tiptap/tiptap-node/image-preview-node/image-preview-extension"
+import { handleImageUploadAndInsert } from "~/lib/tiptap-utils"
 
 // --- Styles ---
 import "./simple-editor.scss"
@@ -311,12 +312,16 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
           accept="image/*,application/pdf"
           multiple
           style={{ display: "none" }}
-          onChange={(e) => {
+          onChange={async (e) => {
             const files = e.target.files
             if (!files || !editor) return
-            // Guarda archivos para que el comando de ImagePreview los inserte
-            ;(editor.storage as any).imagePreview.__pendingFiles = Array.from(files)
-            editor.commands.insertPreviewImages()
+            
+            // Subir archivos al servidor y luego insertarlos con URLs del servidor
+            try {
+              await handleImageUploadAndInsert(Array.from(files), editor)
+            } catch (error) {
+              console.error('Error al subir e insertar imágenes:', error)
+            }
           }}
         />
       </EditorContext.Provider>

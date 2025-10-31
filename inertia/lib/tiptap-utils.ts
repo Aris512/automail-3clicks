@@ -438,6 +438,151 @@ export const handleImageUpload = async (
   }
 }
 
+/**
+ * Construye una URL absoluta para un path relativo
+ * Si el path ya es absoluto (empieza con http:// o https://), lo retorna tal cual
+ * Si el path es relativo (empieza con /), lo convierte a URL absoluta usando window.location.origin
+ */
+function buildAbsoluteUrl(path: string): string {
+  if (!path) return path
+  
+  // Si ya es una URL absoluta, retornarla tal cual
+  if (path.startsWith('http://') || path.startsWith('https://') || path.startsWith('data:')) {
+    return path
+  }
+  
+  // Si es una ruta relativa que empieza con /, construir URL absoluta
+  if (path.startsWith('/')) {
+    // Usar window.location.origin para obtener el dominio actual
+    const origin = typeof window !== 'undefined' ? window.location.origin : ''
+    return `${origin}${path}`
+  }
+  
+  // Si no empieza con /, asumir que es relativa y agregar /
+  return typeof window !== 'undefined' ? `${window.location.origin}/${path}` : path
+}
+
+/**
+ * Sube archivos al servidor y los inserta en el editor usando las URLs del servidor
+ * Similar a handleImageUpload pero diseñado para trabajar con ImagePreview extension
+ * @param files Array de archivos a subir e insertar
+ * @param editor El editor de Tiptap donde se insertarán las imágenes
+ * @returns Promise que se resuelve cuando todas las imágenes se han subido e insertado
+ */
+export const handleImageUploadAndInsert = async (
+  files: File[],
+  editor: Editor
+): Promise<void> => {
+  if (!files || files.length === 0) {
+    console.warn('[handleImageUploadAndInsert] No files provided')
+    return
+  }
+
+  if (!editor) {
+    console.error('[handleImageUploadAndInsert] No editor provided')
+    return
+  }
+
+  // Obtener token CSRF una sola vez
+  const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+
+  // Procesar cada archivo
+  for (const file of files) {
+    if (!file || !file.type) {
+      console.warn('[handleImageUploadAndInsert] Skipping invalid file:', file)
+      continue
+    }
+
+    try {
+      // Validar tamaño
+      if (file.size > MAX_FILE_SIZE) {
+        console.error(`[handleImageUploadAndInsert] File ${file.name} exceeds size limit`)
+        continue
+      }
+
+      // Si es imagen, subir directamente
+      if (file.type.startsWith('image/')) {
+        const formData = new FormData()
+        formData.append('file', file)
+
+        const response = await fetch('/attachments/temp', {
+          method: 'POST',
+          headers: {
+            'X-CSRF-TOKEN': csrfToken,
+            'Accept': 'application/json'
+          },
+          body: formData
+        })
+
+        const data = await response.json()
+
+        if (response.ok && data.success && data.data) {
+          // Construir URL absoluta para asegurar que la imagen se cargue correctamente
+          const imageUrl = buildAbsoluteUrl(data.data.path)
+          
+          console.log('[handleImageUploadAndInsert] Path del servidor:', data.data.path)
+          console.log('[handleImageUploadAndInsert] URL absoluta construida:', imageUrl)
+          
+          // Insertar imagen usando la URL absoluta del servidor
+          editor.chain().focus().setImage({
+            src: imageUrl,
+            alt: file.name,
+            title: file.name
+          }).run()
+          console.log('[handleImageUploadAndInsert] Imagen insertada correctamente')
+        } else {
+          console.error('[handleImageUploadAndInsert] Error al subir imagen:', data.message)
+        }
+      }
+      // Si es PDF, convertir a imagen y luego subir
+      else if (file.type === 'application/pdf') {
+        try {
+          // Convertir PDF a imagen
+          const imageFile = await convertPdfToImage(file)
+          
+          const formData = new FormData()
+          formData.append('file', imageFile)
+
+          const response = await fetch('/attachments/temp', {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': csrfToken,
+              'Accept': 'application/json'
+            },
+            body: formData
+          })
+
+          const data = await response.json()
+
+          if (response.ok && data.success && data.data) {
+            // Construir URL absoluta para asegurar que la imagen se cargue correctamente
+            const imageUrl = buildAbsoluteUrl(data.data.path)
+            
+            console.log('[handleImageUploadAndInsert] PDF - Path del servidor:', data.data.path)
+            console.log('[handleImageUploadAndInsert] PDF - URL absoluta construida:', imageUrl)
+            
+            // Insertar imagen usando la URL absoluta del servidor
+            editor.chain().focus().setImage({
+              src: imageUrl,
+              alt: file.name,
+              title: file.name
+            }).run()
+            console.log('[handleImageUploadAndInsert] PDF convertido e insertado correctamente')
+          } else {
+            console.error('[handleImageUploadAndInsert] Error al subir PDF convertido:', data.message)
+          }
+        } catch (err) {
+          console.error('[handleImageUploadAndInsert] Error al convertir PDF:', err)
+        }
+      } else {
+        console.warn(`[handleImageUploadAndInsert] Tipo de archivo no soportado: ${file.type}`)
+      }
+    } catch (error) {
+      console.error('[handleImageUploadAndInsert] Error procesando archivo:', error)
+    }
+  }
+}
+
 type ProtocolOptions = {
   /**
    * The protocol scheme to be registered.

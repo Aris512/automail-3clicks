@@ -35,8 +35,9 @@ export default class TemplatesController {
       console.log(`📁 [PROCESS TEMP] Iniciando procesamiento de archivos temporales`)
       console.log(`📁 [PROCESS TEMP] Tenant ID: ${tenantId}`)
       
-      // Extraer URLs temporales del HTML
-      const tempImageRegex = /src=["'](\/uploads\/temp\/[^"']+)["']/g
+      // Extraer URLs temporales del HTML (soporta URLs absolutas y relativas)
+      // Regex que detecta tanto URLs absolutas (http://...) como relativas (/uploads/temp/...)
+      const tempImageRegex = /src=["'](https?:\/\/[^"']*\/uploads\/temp\/[^"']+|\.\.\/[^"']*uploads\/temp\/[^"']+|\/uploads\/temp\/[^"']+)["']/gi
       const matches = Array.from(htmlContent.matchAll(tempImageRegex))
       
       if (matches.length === 0) {
@@ -51,29 +52,64 @@ export default class TemplatesController {
 
       for (let i = 0; i < matches.length; i++) {
         const match = matches[i]
-        const tempUrl = match[1]
-        const fullPath = match[1]
+        const tempUrl = match[1] // URL completa (absoluta o relativa)
         
         console.log(`\n📁 [PROCESS TEMP] Procesando archivo ${i + 1}/${matches.length}`)
-        console.log(`📁 [PROCESS TEMP] Archivo temporal: ${tempUrl}`)
+        console.log(`📁 [PROCESS TEMP] Archivo temporal (URL completa): ${tempUrl}`)
+        
+        // Extraer la ruta relativa desde la URL (eliminar dominio si es absoluta)
+        let relativePath = tempUrl
+        if (tempUrl.startsWith('http://') || tempUrl.startsWith('https://')) {
+          // Es una URL absoluta, extraer solo la ruta
+          const urlObj = new URL(tempUrl)
+          relativePath = urlObj.pathname
+          console.log(`📁 [PROCESS TEMP] URL absoluta detectada, ruta relativa extraída: ${relativePath}`)
+        }
         
         // Construir la ruta física del archivo temporal
-        const tempFilePath = path.join(process.cwd(), 'public', fullPath)
+        let tempFilePath = path.join(process.cwd(), 'public', relativePath)
         
-        // Verificar que el archivo existe
+        // Verificar que el path existe
+        let tempStats
         try {
-          await fs.access(tempFilePath)
+          tempStats = await fs.stat(tempFilePath)
         } catch {
           console.warn(`⚠️ [PROCESS TEMP] Archivo temporal no encontrado: ${tempFilePath}`)
           continue
         }
 
+        // Si es un directorio (problema conocido en Windows), buscar el archivo dentro
+        if (tempStats.isDirectory()) {
+          console.log(`⚠️ [PROCESS TEMP] El path es un directorio, buscando archivo dentro...`)
+          try {
+            const dirFiles = await fs.readdir(tempFilePath)
+            if (dirFiles.length > 0) {
+              // Tomar el primer archivo dentro del directorio
+              tempFilePath = path.join(tempFilePath, dirFiles[0])
+              console.log(`📁 [PROCESS TEMP] Archivo encontrado dentro del directorio: ${dirFiles[0]}`)
+              tempStats = await fs.stat(tempFilePath)
+            } else {
+              console.warn(`⚠️ [PROCESS TEMP] Directorio vacío: ${tempFilePath}`)
+              continue
+            }
+          } catch (dirError) {
+            console.warn(`⚠️ [PROCESS TEMP] Error al leer directorio: ${dirError}`)
+            continue
+          }
+        }
+
+        // Verificar que ahora es un archivo
+        if (!tempStats.isFile()) {
+          console.warn(`⚠️ [PROCESS TEMP] El path no es un archivo válido: ${tempFilePath}`)
+          continue
+        }
+
         // Leer el archivo
-        const fileStats = await fs.stat(tempFilePath)
+        const fileStats = tempStats
         console.log(`📊 [PROCESS TEMP] Tamaño del archivo: ${fileStats.size} bytes`)
 
-        // Generar nombre único para el archivo final
-        const fileName = path.basename(fullPath)
+        // Generar nombre único para el archivo final (usar el nombre del archivo temporal real)
+        const fileName = path.basename(tempFilePath)
         const attachmentDir = path.join(process.cwd(), 'public', 'uploads', 'attachments', tenantId.toString())
         await fs.mkdir(attachmentDir, { recursive: true })
 
@@ -147,8 +183,10 @@ export default class TemplatesController {
           console.log(`   - Tamaño: ${fileStats.size} bytes`)
         }
 
-        // Actualizar la URL en el contenido
+        // Actualizar la URL en el contenido (reemplazar tanto la URL absoluta como la relativa)
+        // Reemplazar la URL original (absoluta o relativa) con la nueva ruta relativa de attachments
         updatedContent = updatedContent.replace(tempUrl, attachmentPath)
+        console.log(`🔄 [PROCESS TEMP] URL actualizada en contenido: ${tempUrl} -> ${attachmentPath}`)
       }
 
       console.log(`✅ [PROCESS TEMP] Todos los archivos temporales procesados exitosamente`)
