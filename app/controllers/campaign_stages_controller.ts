@@ -2,13 +2,15 @@ import type { HttpContext } from '@adonisjs/core/http'
 import CampaignStage from '#models/campaign_stage'
 import Campaign from '#models/campaign'
 import TenantUser from '#models/tenant_user'
+import Template from '#models/template'
+import CampaignStageTemplate from '#models/campaign_stage_template'
 import { inject } from '@adonisjs/core'
 import { DateTime } from 'luxon'
 
 @inject()
 export default class CampaignStagesController {
   /**
-   * Obtener todas las etapas de una campaña
+   * Obtener todas las etapas de una campaña (o todas las etapas si no se especifica campaña)
    */
   async index({ params, auth, response }: HttpContext) {
     const user = auth.user!
@@ -27,23 +29,37 @@ export default class CampaignStagesController {
       })
     }
 
-    // Verificar que la campaña pertenece al tenant
-    const campaign = await Campaign.query()
-      .where('id', params.campaignId)
-      .where('tenantId', tenantUser.tenantId)
-      .first()
+    // Si hay campaignId en los params, filtrar por campaña
+    if (params.campaignId) {
+      // Verificar que la campaña pertenece al tenant
+      const campaign = await Campaign.query()
+        .where('id', params.campaignId)
+        .where('tenantId', tenantUser.tenantId)
+        .first()
 
-    if (!campaign) {
-      return response.status(404).json({
-        success: false,
-        message: 'Campaña no encontrada'
+      if (!campaign) {
+        return response.status(404).json({
+          success: false,
+          message: 'Campaña no encontrada'
+        })
+      }
+
+      const stages = await CampaignStage.query()
+        .where('campaignId', params.campaignId)
+        .where('tenantId', tenantUser.tenantId)
+        .orderBy('stageNumber', 'asc')
+        .preload('campaign')
+      
+      return response.json({
+        success: true,
+        data: stages
       })
     }
 
+    // Si no hay campaignId, devolver todas las etapas del tenant
     const stages = await CampaignStage.query()
-      .where('campaignId', params.campaignId)
       .where('tenantId', tenantUser.tenantId)
-      .orderBy('stageNumber', 'asc')
+      .orderBy('createdAt', 'desc')
       .preload('campaign')
     
     return response.json({
@@ -71,9 +87,29 @@ export default class CampaignStagesController {
       })
     }
 
+    const data = request.only(['name', 'stageNumber', 'startsAt', 'campaignId'])
+    
+    // Validaciones básicas
+    if (!data.name || !data.name.trim()) {
+      return response.status(400).json({
+        success: false,
+        message: 'El nombre de la etapa es requerido'
+      })
+    }
+
+    // campaignId puede venir de params o del body
+    const campaignId = params.campaignId || data.campaignId
+    
+    if (!campaignId) {
+      return response.status(400).json({
+        success: false,
+        message: 'El ID de la campaña es requerido'
+      })
+    }
+
     // Verificar que la campaña pertenece al tenant
     const campaign = await Campaign.query()
-      .where('id', params.campaignId)
+      .where('id', campaignId)
       .where('tenantId', tenantUser.tenantId)
       .first()
 
@@ -81,16 +117,6 @@ export default class CampaignStagesController {
       return response.status(404).json({
         success: false,
         message: 'Campaña no encontrada'
-      })
-    }
-
-    const data = request.only(['name', 'stageNumber', 'startsAt'])
-    
-    // Validaciones básicas
-    if (!data.name || !data.name.trim()) {
-      return response.status(400).json({
-        success: false,
-        message: 'El nombre de la etapa es requerido'
       })
     }
 
@@ -104,7 +130,7 @@ export default class CampaignStagesController {
     try {
       const stage = await CampaignStage.create({
         tenantId: tenantUser.tenantId,
-        campaignId: parseInt(params.campaignId),
+        campaignId: parseInt(campaignId),
         name: data.name.trim(),
         stageNumber: data.stageNumber,
         startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined
@@ -270,6 +296,252 @@ export default class CampaignStagesController {
       return response.status(500).json({
         success: false,
         message: 'Error al eliminar la etapa de campaña',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
+  }
+
+  /**
+   * Obtener todas las etapas con sus templates asociados
+   */
+  async indexWithTemplates({ auth, response }: HttpContext) {
+    const user = auth.user!
+    
+    // Obtener el tenant del usuario
+    const tenantUser = await TenantUser.query()
+      .where('userId', user.id)
+      .where('active', true)
+      .first()
+
+    if (!tenantUser) {
+      return response.json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo',
+        data: []
+      })
+    }
+
+    const stages = await CampaignStage.query()
+      .where('tenantId', tenantUser.tenantId)
+      .orderBy('createdAt', 'desc')
+      .preload('campaign')
+    
+    // Para cada etapa, obtener las templates asociadas a través de la campaña
+    const stagesWithTemplates = await Promise.all(
+      stages.map(async (stage) => {
+        const campaign = await Campaign.query()
+          .where('id', stage.campaignId)
+          .preload('templates')
+          .first()
+        
+        return {
+          ...stage.serialize(),
+          templates: campaign?.templates || []
+        }
+      })
+    )
+    
+    return response.json({
+      success: true,
+      data: stagesWithTemplates
+    })
+  }
+
+  /**
+   * Obtener templates asociados a una etapa (a través de la campaña)
+   */
+  async getTemplates({ params, auth, response }: HttpContext) {
+    const user = auth.user!
+    
+    // Obtener el tenant del usuario
+    const tenantUser = await TenantUser.query()
+      .where('userId', user.id)
+      .where('active', true)
+      .first()
+
+    if (!tenantUser) {
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
+    }
+
+    const stage = await CampaignStage.query()
+      .where('id', params.id)
+      .where('tenantId', tenantUser.tenantId)
+      .preload('campaign')
+      .first()
+
+    if (!stage) {
+      return response.status(404).json({
+        success: false,
+        message: 'Etapa no encontrada'
+      })
+    }
+
+    // Obtener templates asociados a la campaña
+    const campaign = await Campaign.query()
+      .where('id', stage.campaignId)
+      .preload('templates')
+      .first()
+
+    return response.json({
+      success: true,
+      data: campaign?.templates || []
+    })
+  }
+
+  /**
+   * Asociar template a una campaña (a través de campaign_stage_templates)
+   */
+  async associateTemplate({ params, request, response, auth }: HttpContext) {
+    const user = auth.user!
+    
+    // Obtener el tenant del usuario
+    const tenantUser = await TenantUser.query()
+      .where('userId', user.id)
+      .where('active', true)
+      .first()
+
+    if (!tenantUser) {
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
+    }
+
+    const stage = await CampaignStage.query()
+      .where('id', params.id)
+      .where('tenantId', tenantUser.tenantId)
+      .first()
+
+    if (!stage) {
+      return response.status(404).json({
+        success: false,
+        message: 'Etapa no encontrada'
+      })
+    }
+
+    const { templateId } = request.only(['templateId'])
+    
+    if (!templateId) {
+      return response.status(400).json({
+        success: false,
+        message: 'El ID de la plantilla es requerido'
+      })
+    }
+
+    // Verificar que la plantilla existe y pertenece al tenant
+    const template = await Template.query()
+      .where('id', templateId)
+      .where('tenantId', tenantUser.tenantId)
+      .first()
+
+    if (!template) {
+      return response.status(404).json({
+        success: false,
+        message: 'Plantilla no encontrada'
+      })
+    }
+
+    try {
+      // Verificar si ya existe la relación
+      const existing = await CampaignStageTemplate.query()
+        .where('campaignId', stage.campaignId)
+        .where('templatesId', templateId)
+        .first()
+
+      if (existing) {
+        return response.status(400).json({
+          success: false,
+          message: 'La plantilla ya está asociada a esta campaña'
+        })
+      }
+
+      // Crear la asociación (usando campaignId de la etapa)
+      await CampaignStageTemplate.create({
+        campaignId: stage.campaignId,
+        templatesId: templateId
+      })
+
+      return response.json({
+        success: true,
+        message: 'Plantilla asociada exitosamente'
+      })
+    } catch (error) {
+      console.error('Error al asociar plantilla:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al asociar la plantilla',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
+  }
+
+  /**
+   * Desasociar template de una campaña
+   */
+  async dissociateTemplate({ params, request, response, auth }: HttpContext) {
+    const user = auth.user!
+    
+    // Obtener el tenant del usuario
+    const tenantUser = await TenantUser.query()
+      .where('userId', user.id)
+      .where('active', true)
+      .first()
+
+    if (!tenantUser) {
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
+    }
+
+    const stage = await CampaignStage.query()
+      .where('id', params.id)
+      .where('tenantId', tenantUser.tenantId)
+      .first()
+
+    if (!stage) {
+      return response.status(404).json({
+        success: false,
+        message: 'Etapa no encontrada'
+      })
+    }
+
+    const { templateId } = request.only(['templateId'])
+    
+    if (!templateId) {
+      return response.status(400).json({
+        success: false,
+        message: 'El ID de la plantilla es requerido'
+      })
+    }
+
+    try {
+      const deleted = await CampaignStageTemplate.query()
+        .where('campaignId', stage.campaignId)
+        .where('templatesId', templateId)
+        .delete()
+
+      const deletedCount = Array.isArray(deleted) ? deleted.length : deleted
+
+      if (deletedCount === 0) {
+        return response.status(404).json({
+          success: false,
+          message: 'La plantilla no está asociada a esta campaña'
+        })
+      }
+
+      return response.json({
+        success: true,
+        message: 'Plantilla desasociada exitosamente'
+      })
+    } catch (error) {
+      console.error('Error al desasociar plantilla:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al desasociar la plantilla',
         error: error instanceof Error ? error.message : 'Unknown error'
       })
     }

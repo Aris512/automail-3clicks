@@ -208,6 +208,28 @@ router.get('/templates/:id', [TemplatesController, 'show']).use(middleware.auth(
 router.put('/templates/:id', [TemplatesController, 'update']).use(middleware.auth())
 router.delete('/templates/:id', [TemplatesController, 'destroy']).use(middleware.auth())
 
+// Rutas para campañas
+const CampaignsController = () => import('#controllers/campaigns_controller')
+router.get('/campaigns', [CampaignsController, 'index']).use(middleware.auth())
+router.post('/campaigns', [CampaignsController, 'store']).use(middleware.auth())
+router.get('/campaigns/:id', [CampaignsController, 'show']).use(middleware.auth())
+router.put('/campaigns/:id', [CampaignsController, 'update']).use(middleware.auth())
+router.delete('/campaigns/:id', [CampaignsController, 'destroy']).use(middleware.auth())
+
+// Rutas para etapas de campaña
+const CampaignStagesController = () => import('#controllers/campaign_stages_controller')
+router.get('/campaign-stages', [CampaignStagesController, 'index']).use(middleware.auth())
+router.get('/campaign-stages/with-templates', [CampaignStagesController, 'indexWithTemplates']).use(middleware.auth())
+router.get('/campaigns/:campaignId/stages', [CampaignStagesController, 'index']).use(middleware.auth())
+router.post('/campaigns/:campaignId/stages', [CampaignStagesController, 'store']).use(middleware.auth())
+router.post('/campaign-stages', [CampaignStagesController, 'store']).use(middleware.auth())
+router.get('/campaign-stages/:id', [CampaignStagesController, 'show']).use(middleware.auth())
+router.put('/campaign-stages/:id', [CampaignStagesController, 'update']).use(middleware.auth())
+router.delete('/campaign-stages/:id', [CampaignStagesController, 'destroy']).use(middleware.auth())
+router.get('/campaign-stages/:id/templates', [CampaignStagesController, 'getTemplates']).use(middleware.auth())
+router.post('/campaign-stages/:id/templates', [CampaignStagesController, 'associateTemplate']).use(middleware.auth())
+router.delete('/campaign-stages/:id/templates', [CampaignStagesController, 'dissociateTemplate']).use(middleware.auth())
+
 // Rutas para attachments
 const AttachmentsController = () => import('#controllers/attachments_controller')
 router.post('/attachments', [AttachmentsController, 'store']).use(middleware.auth())
