@@ -66,11 +66,9 @@ SMTP_config
 
 
 campaigns
-  - id, tenant_id, user_id, domain_id, name, description
+  - id, tenant_id, user_id, //domain_id//-faltante, name, description
   - status (active/paused/completed), created_at, updated_at
 
-
-//relacion entre list-campaigns
 
 
 //relacion intermedia entre campaigns_stage y templates
