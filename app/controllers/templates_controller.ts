@@ -37,7 +37,8 @@ export default class TemplatesController {
       
       // Extraer URLs temporales del HTML (soporta URLs absolutas y relativas)
       // Regex que detecta tanto URLs absolutas (http://...) como relativas (/uploads/temp/...)
-      const tempImageRegex = /src=["'](https?:\/\/[^"']*\/uploads\/temp\/[^"']+|\.\.\/[^"']*uploads\/temp\/[^"']+|\/uploads\/temp\/[^"']+)["']/gi
+      // Busca tanto en src (imágenes) como en href (adjuntos) y data-src (adjuntos)
+      const tempImageRegex = /(?:src|href|data-src)=["'](https?:\/\/[^"']*\/uploads\/temp\/[^"']+|\.\.\/[^"']*uploads\/temp\/[^"']+|\/uploads\/temp\/[^"']+)["']/gi
       const matches = Array.from(htmlContent.matchAll(tempImageRegex))
       
       if (matches.length === 0) {
@@ -53,6 +54,7 @@ export default class TemplatesController {
       for (let i = 0; i < matches.length; i++) {
         const match = matches[i]
         const tempUrl = match[1] // URL completa (absoluta o relativa)
+        const attribute = match[0].split('=')[0] // 'src', 'href', o 'data-src'
         
         console.log(`\n📁 [PROCESS TEMP] Procesando archivo ${i + 1}/${matches.length}`)
         console.log(`📁 [PROCESS TEMP] Archivo temporal (URL completa): ${tempUrl}`)
@@ -185,8 +187,22 @@ export default class TemplatesController {
 
         // Actualizar la URL en el contenido (reemplazar tanto la URL absoluta como la relativa)
         // Reemplazar la URL original (absoluta o relativa) con la nueva ruta relativa de attachments
-        updatedContent = updatedContent.replace(tempUrl, attachmentPath)
-        console.log(`🔄 [PROCESS TEMP] URL actualizada en contenido: ${tempUrl} -> ${attachmentPath}`)
+        // Actualizar tanto en src, href, como data-src dependiendo del atributo original
+        if (attribute === 'src' || attribute === 'href' || attribute === 'data-src') {
+          // Reemplazar el atributo completo manteniendo el formato original
+          const oldAttr = `${attribute}="${tempUrl}"`
+          const newAttr = attribute === 'data-src' 
+            ? `data-src="${attachmentPath}"` 
+            : attribute === 'href'
+            ? `href="${attachmentPath}"`
+            : `src="${attachmentPath}"`
+          updatedContent = updatedContent.replace(oldAttr, newAttr)
+          console.log(`🔄 [PROCESS TEMP] URL actualizada en contenido (${attribute}): ${tempUrl} -> ${attachmentPath}`)
+        } else {
+          // Fallback: reemplazo simple
+          updatedContent = updatedContent.replace(tempUrl, attachmentPath)
+          console.log(`🔄 [PROCESS TEMP] URL actualizada en contenido: ${tempUrl} -> ${attachmentPath}`)
+        }
       }
 
       console.log(`✅ [PROCESS TEMP] Todos los archivos temporales procesados exitosamente`)
@@ -201,7 +217,7 @@ export default class TemplatesController {
   }
 
   /**
-   * Extraer URLs de imágenes del HTML y asociarlas con la plantilla
+   * Extraer URLs de imágenes y adjuntos del HTML y asociarlas con la plantilla
    */
   private async associateImagesWithTemplate(templateId: number, tenantId: number, htmlContent: string) {
     try {
@@ -209,26 +225,30 @@ export default class TemplatesController {
       console.log(`🖼️ [ASSOCIATE IMAGES] Template ID: ${templateId}`)
       console.log(`🖼️ [ASSOCIATE IMAGES] Tenant ID: ${tenantId}`)
       
-      // Extraer todas las URLs de imágenes (que empiecen con /uploads/attachments/)
-      const imageUrlRegex = /src=["'](\/uploads\/attachments\/[^"']+)["']/g
-      const matches = Array.from(htmlContent.matchAll(imageUrlRegex))
-      const imageUrls: string[] = []
+      // Extraer todas las URLs de imágenes y adjuntos (que empiecen con /uploads/attachments/)
+      // Busca en src (imágenes), href (adjuntos enlaces) y data-src (adjuntos en nodos)
+      const attachmentUrlRegex = /(?:src|href|data-src)=["'](\/uploads\/attachments\/[^"']+)["']/g
+      const matches = Array.from(htmlContent.matchAll(attachmentUrlRegex))
+      const attachmentUrls: string[] = []
       
       for (const match of matches) {
         if (match[1]) {
-          imageUrls.push(match[1])
+          attachmentUrls.push(match[1])
         }
       }
 
-      console.log(`🖼️ [ASSOCIATE IMAGES] Encontradas ${imageUrls.length} imágenes en el HTML`)
+      // Eliminar duplicados
+      const uniqueUrls = [...new Set(attachmentUrls)]
+
+      console.log(`🖼️ [ASSOCIATE IMAGES] Encontrados ${uniqueUrls.length} archivos (imágenes y adjuntos) en el HTML`)
       
-      if (imageUrls.length > 0) {
+      if (uniqueUrls.length > 0) {
         console.log(`🖼️ [ASSOCIATE IMAGES] URLs encontradas:`)
-        imageUrls.forEach((url, index) => {
+        uniqueUrls.forEach((url, index) => {
           console.log(`   ${index + 1}. ${url}`)
         })
       } else {
-        console.log(`ℹ️ [ASSOCIATE IMAGES] No se encontraron imágenes para asociar`)
+        console.log(`ℹ️ [ASSOCIATE IMAGES] No se encontraron archivos para asociar`)
       }
 
       // Para cada URL, buscar el attachment correspondiente y crear la relación
@@ -236,10 +256,10 @@ export default class TemplatesController {
       let skippedCount = 0
       let notFoundCount = 0
       
-      for (const imageUrl of imageUrls) {
+      for (const attachmentUrl of uniqueUrls) {
         const attachment = await Attachment.query()
           .where('tenantId', tenantId)
-          .where('path', imageUrl)
+          .where('path', attachmentUrl)
           .first()
 
         if (attachment) {
@@ -262,7 +282,7 @@ export default class TemplatesController {
             skippedCount++
           }
         } else {
-          console.log(`⚠️ [ASSOCIATE IMAGES] Attachment no encontrado en BD: ${imageUrl}`)
+          console.log(`⚠️ [ASSOCIATE IMAGES] Attachment no encontrado en BD: ${attachmentUrl}`)
           notFoundCount++
         }
       }
@@ -321,24 +341,27 @@ export default class TemplatesController {
       console.log(`🔄 [REPLACE ATTACHMENTS] Creando nuevas relaciones...`)
       await this.associateImagesWithTemplate(templateId, tenantId, htmlContent)
       
-      // Extraer URLs de imágenes del nuevo contenido para obtener IDs de los nuevos attachments
-      const imageUrlRegex = /src=["'](\/uploads\/attachments\/[^"']+)["']/g
-      const matches = Array.from(htmlContent.matchAll(imageUrlRegex))
-      const newImagePaths: string[] = []
+      // Extraer URLs de imágenes y adjuntos del nuevo contenido para obtener IDs de los nuevos attachments
+      const attachmentUrlRegex = /(?:src|href|data-src)=["'](\/uploads\/attachments\/[^"']+)["']/g
+      const matches = Array.from(htmlContent.matchAll(attachmentUrlRegex))
+      const newAttachmentPaths: string[] = []
       
       for (const match of matches) {
         if (match[1]) {
-          newImagePaths.push(match[1])
+          newAttachmentPaths.push(match[1])
         }
       }
       
+      // Eliminar duplicados
+      const uniqueNewPaths = [...new Set(newAttachmentPaths)]
+      
       // Obtener IDs de los nuevos attachments
       const newAttachmentIds: number[] = []
-      if (newImagePaths.length > 0) {
-        for (const imagePath of newImagePaths) {
+      if (uniqueNewPaths.length > 0) {
+        for (const attachmentPath of uniqueNewPaths) {
           const attachment = await Attachment.query()
             .where('tenantId', tenantId)
-            .where('path', imagePath)
+            .where('path', attachmentPath)
             .first()
           
           if (attachment) {

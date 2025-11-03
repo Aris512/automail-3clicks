@@ -12,63 +12,76 @@ export default class AttachmentsController {
    */
   async storeTemp({ request, response, auth }: HttpContext) {
     console.log('🚀 [ATTACHMENT STORE TEMP] Iniciando subida temporal de archivo')
-    const user = auth.user!
     
-    // Obtener el tenant del usuario
-    const tenantUser = await TenantUser.query()
-      .where('userId', user.id)
-      .where('active', true)
-      .first()
-
-    if (!tenantUser) {
-      return response.status(400).json({
-        success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo'
-      })
-    }
-
-    const file = request.file('file', {
-      size: '5mb',
-      extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf']
-    })
-
-    if (!file) {
-      return response.status(400).json({
-        success: false,
-        message: 'No se proporcionó un archivo válido'
-      })
-    }
-
+    let file: any = null
+    
     try {
+      const user = auth.user!
+      
+      // Obtener el tenant del usuario
+      const tenantUser = await TenantUser.query()
+        .where('userId', user.id)
+        .where('active', true)
+        .first()
+        
+      if (!tenantUser) {
+        return response.status(400).json({
+          success: false,
+          message: 'Usuario no tiene acceso a ningún tenant activo'
+        })
+      }
+      
+      // ✅ Configuración aumentada para archivos ZIP
+      file = request.file('file', {
+        size: '20mb', // Aumentado para ZIPs grandes
+        extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'rar']
+      })
+      
+      // ⚠️ CRÍTICO: Verificar que el archivo existe
+      if (!file) {
+        console.error('❌ [ATTACHMENT STORE TEMP] No se proporcionó ningún archivo')
+        return response.status(400).json({
+          success: false,
+          message: 'No se proporcionó ningún archivo'
+        })
+      }
+      
+      // ⚠️ CRÍTICO: Validar ANTES de procesar
+      if (!file.isValid) {
+        console.error('❌ [ATTACHMENT STORE TEMP] Archivo inválido:', file.errors)
+        return response.status(422).json({
+          success: false,
+          message: 'Archivo inválido',
+          errors: file.errors
+        })
+      }
+      
       // Generar nombre único para el archivo temporal
-      // Extraer extensión del nombre original del archivo
       const originalName = file.clientName || 'file'
       const fileExtension = path.extname(originalName) || file.extname || ''
       const randomName = crypto.randomBytes(16).toString('hex')
       const fileName = `${randomName}${fileExtension}`
       
+      console.log(`📦 [ATTACHMENT STORE TEMP] Procesando archivo: ${originalName} (${file.size} bytes)`)
+      
       // Crear directorio temporal si no existe
-      const tempUploadDir = path.join(process.cwd(), 'public', 'uploads', 'temp', tenantUser.tenantId.toString())
+      const tempUploadDir = path.join(
+        process.cwd(), 
+        'public', 
+        'uploads', 
+        'temp', 
+        tenantUser.tenantId.toString()
+      )
       await fs.mkdir(tempUploadDir, { recursive: true })
       
-      // Guardar archivo temporalmente
-      // Leer el contenido del archivo ANTES de moverlo para evitar problemas con file.move() en Windows
+      // Preparar ruta de destino
       const filePath = path.join(tempUploadDir, fileName)
-      const tempFilePath = file.tmpPath!
       
-      // Leer el contenido del archivo temporal ANTES de intentar moverlo
-      let fileContent: Buffer
-      try {
-        fileContent = await fs.readFile(tempFilePath)
-      } catch (readError) {
-        throw new Error(`No se pudo leer el archivo temporal: ${readError}`)
-      }
-      
-      // Si el path ya existe como directorio o archivo, eliminarlo primero
+      // Si el path ya existe, eliminarlo primero
       try {
         const existingStats = await fs.stat(filePath)
         if (existingStats.isDirectory()) {
-          await fs.rmdir(filePath, { recursive: true })
+          await fs.rm(filePath, { recursive: true })
         } else if (existingStats.isFile()) {
           await fs.unlink(filePath)
         }
@@ -76,34 +89,74 @@ export default class AttachmentsController {
         // El archivo/directorio no existe, continuar
       }
       
-      // Escribir el archivo directamente en lugar de usar file.move()
-      // Esto evita problemas donde file.move() crea un directorio en Windows
-      await fs.writeFile(filePath, fileContent)
+      // ✅ MÉTODO ROBUSTO: Leer y escribir directamente
+      // Este método funciona mejor con archivos grandes como ZIPs
+      const tempFilePath = file.tmpPath
+      if (!tempFilePath) {
+        throw new Error('No se encontró ruta temporal del archivo')
+      }
+      
+      console.log(`📂 [ATTACHMENT STORE TEMP] Leyendo archivo temporal: ${tempFilePath}`)
+      
+      // Leer el contenido del archivo temporal
+      let fileContent: Buffer
+      try {
+        fileContent = await fs.readFile(tempFilePath)
+        console.log(`✅ [ATTACHMENT STORE TEMP] Archivo leído: ${fileContent.length} bytes`)
+      } catch (readError: any) {
+        console.error('❌ [ATTACHMENT STORE TEMP] Error al leer archivo:', readError)
+        throw new Error(`No se pudo leer el archivo temporal: ${readError.message}`)
+      }
+      
+      // Escribir el archivo en el destino final
+      try {
+        await fs.writeFile(filePath, fileContent)
+        console.log(`✅ [ATTACHMENT STORE TEMP] Archivo escrito en: ${filePath}`)
+      } catch (writeError: any) {
+        console.error('❌ [ATTACHMENT STORE TEMP] Error al escribir archivo:', writeError)
+        throw new Error(`No se pudo escribir el archivo: ${writeError.message}`)
+      }
       
       // Verificar que se guardó correctamente como archivo
-      const finalStats = await fs.stat(filePath)
-      if (!finalStats.isFile()) {
-        throw new Error('El archivo no se guardó correctamente después de escribir')
+      let finalStats
+      try {
+        finalStats = await fs.stat(filePath)
+        if (!finalStats.isFile()) {
+          throw new Error('El archivo no se guardó correctamente: el path no es un archivo válido')
+        }
+        console.log(`✅ [ATTACHMENT STORE TEMP] Archivo verificado: ${finalStats.size} bytes`)
+      } catch (statError: any) {
+        console.error('❌ [ATTACHMENT STORE TEMP] Error al verificar archivo:', statError)
+        throw new Error(`No se pudo verificar el archivo guardado: ${statError.message}`)
       }
       
       const tempPath = `/uploads/temp/${tenantUser.tenantId}/${fileName}`
-
-      console.log('✅ [ATTACHMENT STORE TEMP] Archivo temporal guardado:', tempPath)
-
+      console.log('✅ [ATTACHMENT STORE TEMP] Archivo temporal guardado exitosamente:', tempPath)
+      
       return response.json({
         success: true,
         data: {
           path: tempPath,
           name: file.clientName || fileName,
           fileName: fileName,
-          size: file.size!
+          size: file.size!,
+          type: file.type || 'application/octet-stream'
         }
       })
-    } catch (error) {
-      console.error('Error uploading temp file:', error)
+      
+    } catch (error: any) {
+      console.error('❌ [ATTACHMENT STORE TEMP] Error uploading temp file:', error)
+      console.error('❌ [ATTACHMENT STORE TEMP] Error stack:', error.stack)
+      
       return response.status(500).json({
         success: false,
-        message: 'Error al subir el archivo temporal'
+        message: 'Error al subir el archivo temporal',
+        error: error.message || 'Error desconocido al procesar el archivo',
+        details: {
+          fileName: file?.clientName,
+          fileSize: file?.size,
+          fileType: file?.type
+        }
       })
     }
   }
@@ -113,48 +166,94 @@ export default class AttachmentsController {
    */
   async store({ request, response, auth }: HttpContext) {
     console.log('🚀 [ATTACHMENT STORE] Iniciando subida de archivo')
-    const user = auth.user!
     
-    // Obtener el tenant del usuario
-    const tenantUser = await TenantUser.query()
-      .where('userId', user.id)
-      .where('active', true)
-      .first()
-
-    if (!tenantUser) {
-      return response.status(400).json({
-        success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo'
-      })
-    }
-
-    const file = request.file('file', {
-      size: '5mb',
-      extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp']
-    })
-
-    if (!file) {
-      return response.status(400).json({
-        success: false,
-        message: 'No se proporcionó un archivo válido'
-      })
-    }
-
+    let file: any = null
+    
     try {
+      const user = auth.user!
+      
+      // Obtener el tenant del usuario
+      const tenantUser = await TenantUser.query()
+        .where('userId', user.id)
+        .where('active', true)
+        .first()
+        
+      if (!tenantUser) {
+        return response.status(400).json({
+          success: false,
+          message: 'Usuario no tiene acceso a ningún tenant activo'
+        })
+      }
+      
+      file = request.file('file', {
+        size: '5mb',
+        extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp']
+      })
+      
+      // ⚠️ CRÍTICO: Verificar que el archivo existe
+      if (!file) {
+        console.error('❌ [ATTACHMENT STORE] No se proporcionó ningún archivo')
+        return response.status(400).json({
+          success: false,
+          message: 'No se proporcionó ningún archivo'
+        })
+      }
+      
+      // ⚠️ CRÍTICO: Validar ANTES de procesar
+      if (!file.isValid) {
+        console.error('❌ [ATTACHMENT STORE] Archivo inválido:', file.errors)
+        return response.status(422).json({
+          success: false,
+          message: 'Archivo inválido',
+          errors: file.errors
+        })
+      }
+      
       // Generar nombre único para el archivo
-      // Extraer extensión del nombre original del archivo
       const originalName = file.clientName || 'file'
       const fileExtension = path.extname(originalName) || file.extname || ''
       const randomName = crypto.randomBytes(16).toString('hex')
       const fileName = `${randomName}${fileExtension}`
       
+      console.log(`📸 [ATTACHMENT STORE] Procesando imagen: ${originalName}`)
+      
       // Crear directorio si no existe
-      const uploadDir = path.join(process.cwd(), 'public', 'uploads', 'attachments', tenantUser.tenantId.toString())
+      const uploadDir = path.join(
+        process.cwd(), 
+        'public', 
+        'uploads', 
+        'attachments', 
+        tenantUser.tenantId.toString()
+      )
       await fs.mkdir(uploadDir, { recursive: true })
       
-      // Guardar archivo
+      // Preparar ruta de destino
       const filePath = path.join(uploadDir, fileName)
-      await file.move(filePath, { overwrite: true })
+      
+      // ✅ Usar el mismo método robusto para imágenes
+      const tempFilePath = file.tmpPath
+      if (!tempFilePath) {
+        throw new Error('No se encontró ruta temporal del archivo')
+      }
+      
+      // Leer y escribir directamente
+      try {
+        const fileContent = await fs.readFile(tempFilePath)
+        await fs.writeFile(filePath, fileContent)
+        console.log(`✅ [ATTACHMENT STORE] Imagen guardada: ${filePath}`)
+      } catch (ioError: any) {
+        throw new Error(`Error al guardar la imagen: ${ioError.message}`)
+      }
+      
+      // Verificar que se guardó correctamente
+      try {
+        const finalStats = await fs.stat(filePath)
+        if (!finalStats.isFile()) {
+          throw new Error('El archivo no se guardó correctamente')
+        }
+      } catch (statError: any) {
+        throw new Error(`No se pudo verificar el archivo: ${statError.message}`)
+      }
       
       // Guardar en base de datos
       const attachment = await Attachment.create({
@@ -164,10 +263,10 @@ export default class AttachmentsController {
         fileName: fileName,
         size: file.size!
       })
-
+      
       console.log('✅ [ATTACHMENT STORE] Attachment creado:', attachment.id)
       console.log('📁 [ATTACHMENT STORE] Path:', attachment.path)
-
+      
       return response.json({
         success: true,
         data: {
@@ -178,11 +277,19 @@ export default class AttachmentsController {
           size: attachment.size
         }
       })
-    } catch (error) {
-      console.error('Error uploading file:', error)
+      
+    } catch (error: any) {
+      console.error('❌ [ATTACHMENT STORE] Error uploading file:', error)
+      console.error('❌ [ATTACHMENT STORE] Error stack:', error.stack)
+      
       return response.status(500).json({
         success: false,
-        message: 'Error al subir el archivo'
+        message: 'Error al subir el archivo',
+        error: error.message || 'Error desconocido',
+        details: {
+          fileName: file?.clientName,
+          fileSize: file?.size
+        }
       })
     }
   }

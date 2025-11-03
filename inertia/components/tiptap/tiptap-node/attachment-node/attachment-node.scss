@@ -1,0 +1,66 @@
+.tiptap.ProseMirror {
+  .tiptap-attachment {
+    display: inline-block;
+    margin: 1rem 0;
+    padding: 0;
+    border-radius: var(--tt-radius-xs, 0.25rem);
+    outline: 0.125rem solid transparent;
+    transition: outline-color 0.2s;
+
+    .tiptap-attachment-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      background-color: var(--tt-color-gray-50, #f9fafb);
+      border: 1px solid var(--tt-color-gray-200, #e5e7eb);
+      border-radius: var(--tt-radius-xs, 0.25rem);
+      text-decoration: none;
+      color: var(--tt-color-gray-900, #111827);
+      transition: all 0.2s;
+      min-width: 200px;
+
+      &:hover {
+        background-color: var(--tt-color-gray-100, #f3f4f6);
+        border-color: var(--tt-color-gray-300, #d1d5db);
+        text-decoration: none;
+      }
+
+      &:focus {
+        outline: 2px solid var(--tt-brand-color-500, #3b82f6);
+        outline-offset: 2px;
+      }
+    }
+
+    .tiptap-attachment-icon {
+      font-size: 1.25rem;
+      flex-shrink: 0;
+    }
+
+    .tiptap-attachment-info {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      flex: 1;
+      min-width: 0;
+    }
+
+    .tiptap-attachment-name {
+      font-weight: 500;
+      font-size: 0.875rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .tiptap-attachment-size {
+      font-size: 0.75rem;
+      color: var(--tt-color-gray-500, #6b7280);
+    }
+  }
+
+  .tiptap-attachment.ProseMirror-selectednode {
+    outline-color: var(--tt-brand-color-500, #3b82f6);
+  }
+}
+

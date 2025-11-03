@@ -72,6 +72,11 @@ campaigns
 
 //relacion entre list-campaigns
 
+
+//relacion intermedia entre campaigns_stage y templates
+  -id, campaign_id, templates_id 
+
+
 campaign_stages
   - id, tenant_id, campaign_id, stage_number, name
   - starts_at, created_at, updated_at
@@ -104,8 +109,6 @@ subscriber_lists
   -created_at, updated_at
   -subscribed_at
   -status
-
-
 
 sendings
   - id, tenant_id, contact_id, template_id, sent_at

@@ -32,6 +32,7 @@ import "~/components/tiptap/tiptap-node/list-node/list-node.scss"
 import "~/components/tiptap/tiptap-node/image-node/image-node.scss"
 import "~/components/tiptap/tiptap-node/heading-node/heading-node.scss"
 import "~/components/tiptap/tiptap-node/paragraph-node/paragraph-node.scss"
+import "~/components/tiptap/tiptap-node/attachment-node/attachment-node.scss"
 
 // --- Tiptap UI ---
 import { HeadingDropdownMenu } from "~/components/tiptap/tiptap-ui/heading-dropdown-menu"
@@ -65,6 +66,7 @@ import { useCursorVisibility } from "~/hooks/use-cursor-visibility"
 
 // --- Lib ---
 import { ImagePreview } from "~/components/tiptap/tiptap-node/image-preview-node/image-preview-extension"
+import { AttachmentNode } from "~/components/tiptap/tiptap-node/attachment-node/attachment-node-extension"
 import { handleImageUploadAndInsert } from "~/lib/tiptap-utils"
 
 // --- Styles ---
@@ -242,6 +244,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       Subscript,
       Selection,
       ImagePreview,
+      AttachmentNode,
     ],
     content: initialContent || "",
     onUpdate: onChange ? ({ editor }) => {
@@ -309,7 +312,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,application/pdf"
+          accept="image/*,application/pdf,application/zip,.zip,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed"
           multiple
           style={{ display: "none" }}
           onChange={async (e) => {
@@ -320,7 +323,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
             try {
               await handleImageUploadAndInsert(Array.from(files), editor)
             } catch (error) {
-              console.error('Error al subir e insertar imágenes:', error)
+              console.error('Error al subir e insertar archivos:', error)
             }
           }}
         />

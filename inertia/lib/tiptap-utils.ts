@@ -574,6 +574,58 @@ export const handleImageUploadAndInsert = async (
         } catch (err) {
           console.error('[handleImageUploadAndInsert] Error al convertir PDF:', err)
         }
+      }
+      // Si es ZIP, RAR u otro tipo de archivo adjunto, subir como attachment
+      else if (
+        file.type === 'application/zip' || 
+        file.type === 'application/x-rar-compressed' ||
+        file.type === 'application/x-rar' ||
+        file.name.toLowerCase().endsWith('.zip') ||
+        file.name.toLowerCase().endsWith('.rar') ||
+        file.name.toLowerCase().endsWith('.txt') ||
+        file.name.toLowerCase().endsWith('.docx') ||
+        file.type === 'text/plain' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      ) {
+        // Obtener extensión del archivo al inicio para usarla en todo el bloque
+        const fileExtension = file.name.split('.').pop()?.toLowerCase() || ''
+        
+        try {
+          const formData = new FormData()
+          formData.append('file', file)
+
+          const response = await fetch('/attachments/temp', {
+            method: 'POST',
+            headers: {
+              'X-CSRF-TOKEN': csrfToken,
+              'Accept': 'application/json'
+            },
+            body: formData
+          })
+
+          const data = await response.json()
+
+          if (response.ok && data.success && data.data) {
+            // Construir URL absoluta para el archivo adjunto
+            const attachmentUrl = buildAbsoluteUrl(data.data.path)
+            
+            console.log(`[handleImageUploadAndInsert] ${fileExtension.toUpperCase()} - Path del servidor:`, data.data.path)
+            console.log(`[handleImageUploadAndInsert] ${fileExtension.toUpperCase()} - URL absoluta construida:`, attachmentUrl)
+            
+            // Insertar como nodo de adjunto
+            editor.chain().focus().setAttachment({
+              src: attachmentUrl,
+              name: data.data.name || file.name,
+              fileName: data.data.fileName || file.name,
+              size: data.data.size || file.size
+            }).run()
+            console.log(`[handleImageUploadAndInsert] Archivo ${fileExtension.toUpperCase()} insertado correctamente`)
+          } else {
+            console.error(`[handleImageUploadAndInsert] Error al subir archivo ${fileExtension.toUpperCase()}:`, data.message)
+          }
+        } catch (err) {
+          console.error(`[handleImageUploadAndInsert] Error al subir archivo ${fileExtension.toUpperCase()}:`, err)
+        }
       } else {
         console.warn(`[handleImageUploadAndInsert] Tipo de archivo no soportado: ${file.type}`)
       }
