@@ -151,8 +151,8 @@ const MainToolbarContent = ({
           data-style="ghost"
           role="button"
           tabIndex={-1}
-          aria-label="Add image"
-          tooltip="Add image"
+          aria-label="add files"
+          tooltip="add files"
           onClick={(e) => {
             e.preventDefault()
             e.stopPropagation()
@@ -312,7 +312,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*,application/pdf,application/zip,.zip,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed"
+          accept="image/*,application/pdf,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
           multiple
           style={{ display: "none" }}
           onChange={async (e) => {

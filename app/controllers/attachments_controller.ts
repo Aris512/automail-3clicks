@@ -31,10 +31,9 @@ export default class AttachmentsController {
         })
       }
       
-      // ✅ Configuración aumentada para archivos ZIP
       file = request.file('file', {
-        size: '20mb', // Aumentado para ZIPs grandes
-        extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'zip', 'txt', 'docx', 'rar']
+        size: '20mb',
+        extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'docx', 'rar', 'xlsx', 'xls']
       })
       
       // ⚠️ CRÍTICO: Verificar que el archivo existe
@@ -90,7 +89,6 @@ export default class AttachmentsController {
       }
       
       // ✅ MÉTODO ROBUSTO: Leer y escribir directamente
-      // Este método funciona mejor con archivos grandes como ZIPs
       const tempFilePath = file.tmpPath
       if (!tempFilePath) {
         throw new Error('No se encontró ruta temporal del archivo')

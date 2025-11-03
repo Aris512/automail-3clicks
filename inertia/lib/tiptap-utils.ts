@@ -575,17 +575,20 @@ export const handleImageUploadAndInsert = async (
           console.error('[handleImageUploadAndInsert] Error al convertir PDF:', err)
         }
       }
-      // Si es ZIP, RAR u otro tipo de archivo adjunto, subir como attachment
+      // Si es RAR, Excel u otro tipo de archivo adjunto, subir como attachment
       else if (
-        file.type === 'application/zip' || 
         file.type === 'application/x-rar-compressed' ||
         file.type === 'application/x-rar' ||
-        file.name.toLowerCase().endsWith('.zip') ||
         file.name.toLowerCase().endsWith('.rar') ||
         file.name.toLowerCase().endsWith('.txt') ||
         file.name.toLowerCase().endsWith('.docx') ||
+        file.name.toLowerCase().endsWith('.xlsx') ||
+        file.name.toLowerCase().endsWith('.xls') ||
         file.type === 'text/plain' ||
-        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+        file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        file.type === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        file.type === 'application/vnd.ms-excel' ||
+        file.type === 'application/excel'
       ) {
         // Obtener extensión del archivo al inicio para usarla en todo el bloque
         const fileExtension = file.name.split('.').pop()?.toLowerCase() || ''
