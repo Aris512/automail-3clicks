@@ -39,6 +39,11 @@ new Ignitor(APP_ROOT, { importer: IMPORTER })
   })
   .httpServer()
   .start()
+  .then(async () => {
+    // Iniciar el scheduler después de que el servidor esté listo
+    const { startScheduler } = await import('#start/scheduler')
+    await startScheduler()
+  })
   .catch((error) => {
     process.exitCode = 1
     prettyPrintError(error)

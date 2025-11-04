@@ -22,14 +22,20 @@ export default class TemplateRenderService {
     }
 
     // Preparar los datos del suscriptor para el renderizado
+    // Mustache escapa automáticamente HTML en variables normales, pero para HTML/Markdown
+    // usamos triple mustaches {{{ }}} para renderizar sin escape
     const subscriberData = {
       name: subscriber.name || '',
       email: subscriber.email || '',
       description: subscriber.description || '',
     }
 
-    // Renderizar el subject y body_markdown usando mustache
+    // Renderizar el subject (texto plano, se escapa automáticamente)
     const renderedSubject = Mustache.render(template.subject, subscriberData)
+
+    // Renderizar el body_markdown
+    // Si el template usa {{variable}} escapa HTML, si usa {{{variable}}} no escapa
+    // Para emails HTML, normalmente queremos que el contenido se mantenga como HTML
     const renderedBody = Mustache.render(template.bodyMarkdown, subscriberData)
 
     return {
