@@ -10,6 +10,7 @@ import { Plus, FileText, Edit, Trash2, Eye, X, Link2, Unlink } from 'lucide-reac
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { AlertDialog } from '~/components/ui/alert-dialog'
+import "~/components/tiptap/tiptap-node/image-node/image-node.scss"
 
 interface User {
   id: number
@@ -758,7 +759,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                 </Button>
               </div>
               <div className="flex-1 overflow-y-auto p-6">
-                <div dangerouslySetInnerHTML={{ __html: viewingTemplate.bodyMarkdown }} />
+                <div className="tiptap ProseMirror" dangerouslySetInnerHTML={{ __html: viewingTemplate.bodyMarkdown }} />
               </div>
               <div className="flex items-center justify-between p-6 border-t bg-gray-50">
                 <span className={`text-xs px-2 py-1 rounded ${

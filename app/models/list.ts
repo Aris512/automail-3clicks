@@ -2,6 +2,7 @@ import { DateTime } from 'luxon'
 import { BaseModel, column, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
 import Tenant from './tenant.js'
 import Subscriber from './subscriber.js'
+import Campaign from './campaign.js'
 import type {BelongsTo, ManyToMany} from '@adonisjs/lucid/types/relations'
 
 export default class List extends BaseModel {
@@ -42,4 +43,11 @@ export default class List extends BaseModel {
     pivotRelatedForeignKey: 'subscriber_id',
   })
   declare subscribers: ManyToMany<typeof Subscriber>
+
+  @manyToMany(() => Campaign, {
+    pivotTable: 'campaign_lists',
+    pivotForeignKey: 'list_id',
+    pivotRelatedForeignKey: 'campaign_id',
+  })
+  declare campaigns: ManyToMany<typeof Campaign>
 }

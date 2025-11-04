@@ -10,20 +10,6 @@ import path from 'path'
 
 @inject()
 export default class TemplatesController {
-  /**
-   * Modificar la tabla templates para hacer stage_id nullable
-   */
-  private async ensureStageIdNullable() {
-    try {
-      await db.rawQuery('ALTER TABLE templates ALTER COLUMN stage_id DROP NOT NULL;')
-      console.log('✅ Columna stage_id modificada a nullable')
-    } catch (error: any) {
-      // Ignorar si ya es nullable o si no existe
-      if (!error.message.includes('already')) {
-        console.log('⚠️ No se pudo modificar stage_id (ya debe ser nullable):', error.message)
-      }
-    }
-  }
 
   /**
    * Procesar archivos temporales y moverlos a attachments
@@ -499,9 +485,6 @@ export default class TemplatesController {
     }
 
     try {
-      // Asegurar que stage_id es nullable antes de crear la plantilla
-      await this.ensureStageIdNullable()
-      
       console.log('💾 [STORE] Intentando crear plantilla...')
       
       // Procesar archivos temporales y obtener contenido actualizado

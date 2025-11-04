@@ -1,5 +1,6 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Campaign from '#models/campaign'
+import CampaignList from '#models/campaign_list'
 import TenantUser from '#models/tenant_user'
 import { inject } from '@adonisjs/core'
 
@@ -29,6 +30,7 @@ export default class CampaignsController {
       .where('tenantId', tenantUser.tenantId)
       .preload('user')
       .preload('campaignStages')
+      .preload('lists')
       .orderBy('createdAt', 'desc')
     
     return response.json({
@@ -56,7 +58,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status', 'emailSetupId'])
+    const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -83,6 +85,30 @@ export default class CampaignsController {
         status: data.status || 'active',
         emailSetupId: data.emailSetupId || null
       })
+
+      // Asociar listas si se proporcionaron
+      if (data.listIds && Array.isArray(data.listIds) && data.listIds.length > 0) {
+        const listIds = data.listIds.map((id: any) => parseInt(id, 10)).filter((id: number) => !isNaN(id))
+        
+        // Verificar que todas las listas pertenezcan al tenant
+        const List = (await import('#models/list')).default
+        const lists = await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .whereIn('id', listIds)
+        
+        const validListIds = lists.map(list => list.id)
+        
+        // Crear relaciones
+        for (const listId of validListIds) {
+          await CampaignList.create({
+            campaignId: campaign.id,
+            listId: listId
+          })
+        }
+      }
+
+      // Cargar relaciones para la respuesta
+      await campaign.load('lists')
 
       return response.status(201).json({
         success: true,
@@ -123,6 +149,7 @@ export default class CampaignsController {
       .where('tenantId', tenantUser.tenantId)
       .preload('user')
       .preload('campaignStages')
+      .preload('lists')
       .first()
 
     if (!campaign) {
@@ -169,7 +196,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status', 'emailSetupId'])
+    const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds'])
     
     // Validaciones básicas
     if (data.name !== undefined && (!data.name || !data.name.trim())) {
@@ -195,6 +222,49 @@ export default class CampaignsController {
         emailSetupId: data.emailSetupId !== undefined ? data.emailSetupId : campaign.emailSetupId
       })
       await campaign.save()
+
+      // Actualizar relaciones con listas si se proporcionaron
+      if (data.listIds !== undefined) {
+        const List = (await import('#models/list')).default
+        
+        // Obtener listas válidas del tenant
+        const listIds = Array.isArray(data.listIds) 
+          ? data.listIds.map((id: any) => parseInt(id, 10)).filter((id: number) => !isNaN(id))
+          : []
+        
+        const lists = await List.query()
+          .where('tenantId', tenantUser.tenantId)
+          .whereIn('id', listIds)
+        
+        const validListIds = lists.map(list => list.id)
+        
+        // Obtener relaciones actuales
+        const currentRelations = await CampaignList.query()
+          .where('campaignId', campaign.id)
+        
+        const currentListIds = currentRelations.map(rel => rel.listId)
+        
+        // Eliminar relaciones que ya no están en la nueva lista
+        const toRemove = currentListIds.filter(id => !validListIds.includes(id))
+        for (const listId of toRemove) {
+          await CampaignList.query()
+            .where('campaignId', campaign.id)
+            .where('listId', listId)
+            .delete()
+        }
+        
+        // Agregar nuevas relaciones
+        const toAdd = validListIds.filter(id => !currentListIds.includes(id))
+        for (const listId of toAdd) {
+          await CampaignList.create({
+            campaignId: campaign.id,
+            listId: listId
+          })
+        }
+      }
+
+      // Cargar relaciones para la respuesta
+      await campaign.load('lists')
 
       return response.json({
         success: true,

@@ -35,6 +35,7 @@ interface Campaign {
   tenantId: number
   emailSetupId?: number | null
   campaignStages?: any[]
+  lists?: List[] | any[]
   user?: {
     id: number
     fullName: string
@@ -52,6 +53,15 @@ interface EmailSetup {
   userId: number
 }
 
+interface List {
+  id: number
+  name: string
+  slug: string
+  description?: string
+  status: 'active' | 'inactive' | 'archived'
+  tenantId: number
+}
+
 interface CampanasProps {
   user: User
 }
@@ -65,6 +75,8 @@ export default function Campanas({ user }: CampanasProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [emailSetups, setEmailSetups] = useState<EmailSetup[]>([])
   const [loadingEmailSetups, setLoadingEmailSetups] = useState(false)
+  const [lists, setLists] = useState<List[]>([])
+  const [loadingLists, setLoadingLists] = useState(false)
   
   // Estados del formulario
   const [showForm, setShowForm] = useState(false)
@@ -73,7 +85,8 @@ export default function Campanas({ user }: CampanasProps) {
     name: '',
     description: '',
     status: 'active' as 'active' | 'paused' | 'completed',
-    emailSetupId: null as number | null
+    emailSetupId: null as number | null,
+    listIds: [] as number[]
   })
   const [isSaving, setIsSaving] = useState(false)
   
@@ -141,10 +154,38 @@ export default function Campanas({ user }: CampanasProps) {
     }
   }
 
+  // Cargar listas
+  const loadLists = async () => {
+    setLoadingLists(true)
+    try {
+      const response = await fetch('/lists', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        setLists(result.data || [])
+      } else {
+        console.error('Error al cargar listas:', result.message)
+      }
+    } catch (error) {
+      console.error('Error al cargar listas:', error)
+    } finally {
+      setLoadingLists(false)
+    }
+  }
+
   // Cargar campañas al montar el componente
   useEffect(() => {
     loadCampaigns()
     loadEmailSetups()
+    loadLists()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -154,7 +195,8 @@ export default function Campanas({ user }: CampanasProps) {
       name: '',
       description: '',
       status: 'active',
-      emailSetupId: null
+      emailSetupId: null,
+      listIds: []
     })
     setEditingCampaign(null)
   }
@@ -177,14 +219,42 @@ export default function Campanas({ user }: CampanasProps) {
   }
 
   // Abrir formulario para editar
-  const handleEdit = (campaign: Campaign) => {
+  const handleEdit = async (campaign: Campaign) => {
     try {
       setEditingCampaign(campaign)
+      
+      // Cargar las listas asociadas a la campaña
+      let campaignListIds: number[] = []
+      if (campaign.id) {
+        try {
+          const response = await fetch(`/campaigns/${campaign.id}/lists`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': getCsrfToken(),
+            },
+            credentials: 'include'
+          })
+
+          const result = await response.json()
+          if (result.success && result.data) {
+            campaignListIds = result.data.map((cl: any) => cl.list?.id || cl.listId).filter((id: any) => id)
+          }
+        } catch (error) {
+          console.error('Error al cargar listas de la campaña:', error)
+          // Si la campaña tiene listas en el objeto, usarlas
+          if (campaign.lists && Array.isArray(campaign.lists)) {
+            campaignListIds = campaign.lists.map((list: any) => list.id || list)
+          }
+        }
+      }
+
       setFormData({
         name: campaign.name || '',
         description: campaign.description || '',
         status: campaign.status || 'active',
-        emailSetupId: campaign.emailSetupId || null
+        emailSetupId: campaign.emailSetupId || null,
+        listIds: campaignListIds
       })
       setShowForm(true)
     } catch (error) {
@@ -226,7 +296,8 @@ export default function Campanas({ user }: CampanasProps) {
           name: formData.name.trim(),
           description: formData.description.trim() || undefined,
           status: formData.status,
-          emailSetupId: formData.emailSetupId || null
+          emailSetupId: formData.emailSetupId || null,
+          listIds: formData.listIds
         })
       })
 
@@ -436,54 +507,106 @@ export default function Campanas({ user }: CampanasProps) {
                     </div>
                   </div>
 
-                  <div>
-                    <Label htmlFor="emailSetupId">Dominio (Email Setup)</Label>
-                    {loadingEmailSetups ? (
-                      <Input disabled placeholder="Cargando dominios..." />
-                    ) : (
-                      <Select
-                        value={formData.emailSetupId ? String(formData.emailSetupId) : undefined}
-                        onValueChange={(value) => {
-                          const newValue = value ? parseInt(value, 10) : null
-                          setFormData({ 
-                            ...formData, 
-                            emailSetupId: newValue
-                          })
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Selecciona un dominio (opcional)" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {emailSetups && Array.isArray(emailSetups) && emailSetups.length > 0 ? (
-                            emailSetups.map((setup) => {
-                              const displayName = setup.name || setup.email || 'Sin nombre'
-                              const fromText = setup.from ? ` (${setup.from})` : ''
-                              return (
-                                <SelectItem key={setup.id} value={String(setup.id)}>
-                                  {displayName}{fromText}
-                                </SelectItem>
-                              )
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="emailSetupId">Dominio (Email Setup)</Label>
+                      {loadingEmailSetups ? (
+                        <Input disabled placeholder="Cargando dominios..." />
+                      ) : (
+                        <Select
+                          value={formData.emailSetupId ? String(formData.emailSetupId) : undefined}
+                          onValueChange={(value) => {
+                            const newValue = value ? parseInt(value, 10) : null
+                            setFormData({ 
+                              ...formData, 
+                              emailSetupId: newValue
                             })
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecciona un dominio (opcional)" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {emailSetups && Array.isArray(emailSetups) && emailSetups.length > 0 ? (
+                              emailSetups.map((setup) => {
+                                const displayName = setup.name || setup.email || 'Sin nombre'
+                                const fromText = setup.from ? ` (${setup.from})` : ''
+                                return (
+                                  <SelectItem key={setup.id} value={String(setup.id)}>
+                                    {displayName}{fromText}
+                                  </SelectItem>
+                                )
+                              })
+                            ) : (
+                              <SelectItem value="no-domains" disabled>
+                                No hay dominios disponibles
+                              </SelectItem>
+                            )}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      {formData.emailSetupId && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="mt-2"
+                          onClick={() => setFormData({ ...formData, emailSetupId: null })}
+                        >
+                          Limpiar selección
+                        </Button>
+                      )}
+                    </div>
+
+                    <div>
+                      <Label>Listas de Contactos</Label>
+                      {loadingLists ? (
+                        <Input disabled placeholder="Cargando listas..." />
+                      ) : (
+                        <div className="border rounded-md p-3 max-h-48 overflow-y-auto bg-background">
+                          {lists && Array.isArray(lists) && lists.length > 0 ? (
+                            lists
+                              .filter(list => list.status === 'active')
+                              .map((list) => (
+                                <div key={list.id} className="flex items-center space-x-2 py-1">
+                                  <input
+                                    type="checkbox"
+                                    id={`list-${list.id}`}
+                                    checked={formData.listIds.includes(list.id)}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setFormData({
+                                          ...formData,
+                                          listIds: [...formData.listIds, list.id]
+                                        })
+                                      } else {
+                                        setFormData({
+                                          ...formData,
+                                          listIds: formData.listIds.filter(id => id !== list.id)
+                                        })
+                                      }
+                                    }}
+                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                                  />
+                                  <label
+                                    htmlFor={`list-${list.id}`}
+                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                                  >
+                                    {list.name}
+                                  </label>
+                                </div>
+                              ))
                           ) : (
-                            <SelectItem value="no-domains" disabled>
-                              No hay dominios disponibles
-                            </SelectItem>
+                            <p className="text-sm text-gray-500">No hay listas disponibles</p>
                           )}
-                        </SelectContent>
-                      </Select>
-                    )}
-                    {formData.emailSetupId && (
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        className="mt-2"
-                        onClick={() => setFormData({ ...formData, emailSetupId: null })}
-                      >
-                        Limpiar selección
-                      </Button>
-                    )}
+                        </div>
+                      )}
+                      {formData.listIds.length > 0 && (
+                        <p className="text-xs text-gray-500 mt-2">
+                          {formData.listIds.length} {formData.listIds.length === 1 ? 'lista seleccionada' : 'listas seleccionadas'}
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -633,7 +756,7 @@ export default function Campanas({ user }: CampanasProps) {
                             <Trash2 className="h-4 w-4 mr-1" />
                             Eliminar
                           </Button>
-                        </div>
+            </div>
           </div>
                     </CardHeader>
                   </Card>

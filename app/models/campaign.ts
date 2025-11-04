@@ -1,10 +1,11 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo, hasMany } from '@adonisjs/lucid/orm'
+import { BaseModel, column, belongsTo, hasMany, manyToMany } from '@adonisjs/lucid/orm'
 import Tenant from './tenant.js'
 import User from './user.js'
 import CampaignStage from './campaign_stage.js'
 import EmailSetup from './email_setup.js'
-import type { BelongsTo, HasMany } from '@adonisjs/lucid/types/relations'
+import List from './list.js'
+import type { BelongsTo, HasMany, ManyToMany } from '@adonisjs/lucid/types/relations'
 
 export default class Campaign extends BaseModel {
   @column({ isPrimary: true })
@@ -47,4 +48,11 @@ export default class Campaign extends BaseModel {
 
   @hasMany(() => CampaignStage)
   declare campaignStages: HasMany<typeof CampaignStage>
+
+  @manyToMany(() => List, {
+    pivotTable: 'campaign_lists',
+    pivotForeignKey: 'campaign_id',
+    pivotRelatedForeignKey: 'list_id',
+  })
+  declare lists: ManyToMany<typeof List>
 }

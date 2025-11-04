@@ -70,16 +70,17 @@ campaigns
   - status (active/paused/completed), created_at, updated_at
 
 
+campaign_stages
+  - id, tenant_id, campaign_id, stage_number, name
+  - starts_at, created_at, updated_at
 
 //relacion intermedia entre campaigns_stage y templates (tabla pivot)
 
 campaign_stage_templates
-  -id, campaign_id, templates_id, created_at, updated_at 
+  -id, campaign_stage_id, templates_id, created_at, updated_at 
 
-
-campaign_stages
-  - id, tenant_id, campaign_id, stage_number, name
-  - starts_at, created_at, updated_at
+//relacion intermedia entre campaigns y list (tabla pivot)
+  -id, campaign_id, list_id, created at, updated_at
 
 templates
   - id, tenant_id, stage_id, name, subject, body_markdown

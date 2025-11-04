@@ -220,6 +220,14 @@ router.get('/campaigns/:id', [CampaignsController, 'show']).use(middleware.auth(
 router.put('/campaigns/:id', [CampaignsController, 'update']).use(middleware.auth())
 router.delete('/campaigns/:id', [CampaignsController, 'destroy']).use(middleware.auth())
 
+// Rutas para relaciones campaña-lista
+const CampaignListsController = () => import('#controllers/campaign_lists_controller')
+router.get('/campaign-lists', [CampaignListsController, 'index']).use(middleware.auth())
+router.get('/campaigns/:campaignId/lists', [CampaignListsController, 'getCampaignLists']).use(middleware.auth())
+router.post('/campaign-lists', [CampaignListsController, 'store']).use(middleware.auth())
+router.delete('/campaign-lists/:id', [CampaignListsController, 'destroy']).use(middleware.auth())
+router.post('/campaign-lists/remove-relation', [CampaignListsController, 'removeRelation']).use(middleware.auth())
+
 // Rutas para etapas de campaña
 const CampaignStagesController = () => import('#controllers/campaign_stages_controller')
 router.get('/campaign-stages', [CampaignStagesController, 'index']).use(middleware.auth())

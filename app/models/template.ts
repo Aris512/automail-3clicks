@@ -11,9 +11,6 @@ export default class Template extends BaseModel {
   declare tenantId: number
 
   @column()
-  declare stageId?: number
-
-  @column()
   declare name: string
 
   @column()
