@@ -208,6 +208,10 @@ router.get('/templates/:id', [TemplatesController, 'show']).use(middleware.auth(
 router.put('/templates/:id', [TemplatesController, 'update']).use(middleware.auth())
 router.delete('/templates/:id', [TemplatesController, 'destroy']).use(middleware.auth())
 
+// Rutas para email setups
+const EmailSetupsController = () => import('#controllers/email_setups_controller')
+router.get('/email-setups', [EmailSetupsController, 'index']).use(middleware.auth())
+
 // Rutas para campañas
 const CampaignsController = () => import('#controllers/campaigns_controller')
 router.get('/campaigns', [CampaignsController, 'index']).use(middleware.auth())

@@ -56,7 +56,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status'])
+    const data = request.only(['name', 'description', 'status', 'emailSetupId'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -80,7 +80,8 @@ export default class CampaignsController {
         userId: user.id,
         name: data.name.trim(),
         description: data.description?.trim(),
-        status: data.status || 'active'
+        status: data.status || 'active',
+        emailSetupId: data.emailSetupId || null
       })
 
       return response.status(201).json({
@@ -168,7 +169,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status'])
+    const data = request.only(['name', 'description', 'status', 'emailSetupId'])
     
     // Validaciones básicas
     if (data.name !== undefined && (!data.name || !data.name.trim())) {
@@ -190,7 +191,8 @@ export default class CampaignsController {
       campaign.merge({
         name: data.name?.trim(),
         description: data.description?.trim(),
-        status: data.status
+        status: data.status,
+        emailSetupId: data.emailSetupId !== undefined ? data.emailSetupId : campaign.emailSetupId
       })
       await campaign.save()
 
