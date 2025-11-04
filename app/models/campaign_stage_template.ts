@@ -1,3 +1,4 @@
+import { DateTime } from 'luxon'
 import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
 import Campaign from './campaign.js'
 import Template from './template.js'
@@ -12,6 +13,12 @@ export default class CampaignStageTemplate extends BaseModel {
 
   @column()
   declare templatesId: number
+
+  @column.dateTime({ autoCreate: true })
+  declare createdAt: DateTime
+
+  @column.dateTime({ autoCreate: true, autoUpdate: true })
+  declare updatedAt: DateTime
 
   @belongsTo(() => Campaign)
   declare campaign: BelongsTo<typeof Campaign>

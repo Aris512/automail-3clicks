@@ -4,6 +4,7 @@ import Tenant from './tenant.js'
 import User from './user.js'
 import CampaignStage from './campaign_stage.js'
 import Template from './template.js'
+import EmailSetup from './email_setup.js'
 import type { BelongsTo, HasMany, ManyToMany } from '@adonisjs/lucid/types/relations'
 
 export default class Campaign extends BaseModel {
@@ -15,6 +16,9 @@ export default class Campaign extends BaseModel {
 
   @column()
   declare userId: number
+
+  @column()
+  declare emailSetupId: number | null
 
   @column()
   declare name: string
@@ -36,6 +40,11 @@ export default class Campaign extends BaseModel {
 
   @belongsTo(() => User)
   declare user: BelongsTo<typeof User>
+
+  @belongsTo(() => EmailSetup, {
+    foreignKey: 'emailSetupId'
+  })
+  declare emailSetup: BelongsTo<typeof EmailSetup>
 
   @hasMany(() => CampaignStage)
   declare campaignStages: HasMany<typeof CampaignStage>

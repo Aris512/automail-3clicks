@@ -22,6 +22,7 @@ export default class extends BaseSchema {
         .onDelete('cascade')
 
       table.unique(['campaign_id', 'templates_id'])
+      table.timestamps(true, true)
     })
   }
 

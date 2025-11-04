@@ -66,13 +66,15 @@ SMTP_config
 
 
 campaigns
-  - id, tenant_id, user_id, //domain_id//-faltante, name, description
+  - id, tenant_id, user_id, email_setup_id, name, description
   - status (active/paused/completed), created_at, updated_at
 
 
 
-//relacion intermedia entre campaigns_stage y templates
-  -id, campaign_id, templates_id 
+//relacion intermedia entre campaigns_stage y templates (tabla pivot)
+
+campaign_stage_templates
+  -id, campaign_id, templates_id, created_at, updated_at 
 
 
 campaign_stages
