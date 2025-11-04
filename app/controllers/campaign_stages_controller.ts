@@ -326,17 +326,14 @@ export default class CampaignStagesController {
       .orderBy('createdAt', 'desc')
       .preload('campaign')
     
-    // Para cada etapa, obtener las templates asociadas a través de la campaña
+    // Para cada etapa, obtener las templates asociadas directamente
     const stagesWithTemplates = await Promise.all(
       stages.map(async (stage) => {
-        const campaign = await Campaign.query()
-          .where('id', stage.campaignId)
-          .preload('templates')
-          .first()
+        await stage.load('templates')
         
         return {
           ...stage.serialize(),
-          templates: campaign?.templates || []
+          templates: stage.templates || []
         }
       })
     )
@@ -379,20 +376,17 @@ export default class CampaignStagesController {
       })
     }
 
-    // Obtener templates asociados a la campaña
-    const campaign = await Campaign.query()
-      .where('id', stage.campaignId)
-      .preload('templates')
-      .first()
+    // Obtener templates asociados a la etapa
+    await stage.load('templates')
 
     return response.json({
       success: true,
-      data: campaign?.templates || []
+      data: stage.templates || []
     })
   }
 
   /**
-   * Asociar template a una campaña (a través de campaign_stage_templates)
+   * Asociar template a una etapa de campaña (a través de campaign_stage_templates)
    */
   async associateTemplate({ params, request, response, auth }: HttpContext) {
     const user = auth.user!
@@ -447,20 +441,20 @@ export default class CampaignStagesController {
     try {
       // Verificar si ya existe la relación
       const existing = await CampaignStageTemplate.query()
-        .where('campaignId', stage.campaignId)
+        .where('campaignStageId', stage.id)
         .where('templatesId', templateId)
         .first()
 
       if (existing) {
         return response.status(400).json({
           success: false,
-          message: 'La plantilla ya está asociada a esta campaña'
+          message: 'La plantilla ya está asociada a esta etapa de campaña'
         })
       }
 
-      // Crear la asociación (usando campaignId de la etapa)
+      // Crear la asociación (usando el ID de la etapa)
       await CampaignStageTemplate.create({
-        campaignId: stage.campaignId,
+        campaignStageId: stage.id,
         templatesId: templateId
       })
 
@@ -520,7 +514,7 @@ export default class CampaignStagesController {
 
     try {
       const deleted = await CampaignStageTemplate.query()
-        .where('campaignId', stage.campaignId)
+        .where('campaignStageId', stage.id)
         .where('templatesId', templateId)
         .delete()
 
@@ -529,7 +523,7 @@ export default class CampaignStagesController {
       if (deletedCount === 0) {
         return response.status(404).json({
           success: false,
-          message: 'La plantilla no está asociada a esta campaña'
+          message: 'La plantilla no está asociada a esta etapa de campaña'
         })
       }
 

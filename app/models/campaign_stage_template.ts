@@ -1,6 +1,6 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
-import Campaign from './campaign.js'
+import CampaignStage from './campaign_stage.js'
 import Template from './template.js'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 
@@ -9,7 +9,7 @@ export default class CampaignStageTemplate extends BaseModel {
   declare id: number
 
   @column()
-  declare campaignId: number
+  declare campaignStageId: number
 
   @column()
   declare templatesId: number
@@ -20,8 +20,8 @@ export default class CampaignStageTemplate extends BaseModel {
   @column.dateTime({ autoCreate: true, autoUpdate: true })
   declare updatedAt: DateTime
 
-  @belongsTo(() => Campaign)
-  declare campaign: BelongsTo<typeof Campaign>
+  @belongsTo(() => CampaignStage)
+  declare campaignStage: BelongsTo<typeof CampaignStage>
 
   @belongsTo(() => Template, {
     foreignKey: 'templatesId'

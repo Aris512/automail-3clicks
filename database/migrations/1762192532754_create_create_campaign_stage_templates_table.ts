@@ -6,13 +6,13 @@ export default class extends BaseSchema {
   async up() {
     this.schema.createTable(this.tableName, (table) => {
       table.increments('id')
-      table.integer('campaign_id').unsigned().notNullable().index()
+      table.integer('campaign_stage_id').unsigned().notNullable().index()
       table.integer('templates_id').unsigned().notNullable().index()
 
       table
-        .foreign('campaign_id')
+        .foreign('campaign_stage_id')
         .references('id')
-        .inTable('campaigns')
+        .inTable('campaign_stages')
         .onDelete('cascade')
 
       table
@@ -21,7 +21,7 @@ export default class extends BaseSchema {
         .inTable('templates')
         .onDelete('cascade')
 
-      table.unique(['campaign_id', 'templates_id'])
+      table.unique(['campaign_stage_id', 'templates_id'])
       table.timestamps(true, true)
     })
   }

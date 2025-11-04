@@ -1,8 +1,9 @@
 import { DateTime } from 'luxon'
-import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
+import { BaseModel, column, belongsTo, manyToMany } from '@adonisjs/lucid/orm'
 import Tenant from './tenant.js'
 import Campaign from './campaign.js'
-import type { BelongsTo } from '@adonisjs/lucid/types/relations'
+import Template from './template.js'
+import type { BelongsTo, ManyToMany } from '@adonisjs/lucid/types/relations'
 
 export default class CampaignStage extends BaseModel {
   @column({ isPrimary: true })
@@ -34,4 +35,11 @@ export default class CampaignStage extends BaseModel {
 
   @belongsTo(() => Campaign)
   declare campaign: BelongsTo<typeof Campaign>
+
+  @manyToMany(() => Template, {
+    pivotTable: 'campaign_stage_templates',
+    pivotForeignKey: 'campaign_stage_id',
+    pivotRelatedForeignKey: 'templates_id',
+  })
+  declare templates: ManyToMany<typeof Template>
 }
