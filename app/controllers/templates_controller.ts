@@ -51,6 +51,12 @@ export default class TemplatesController {
           const urlObj = new URL(tempUrl)
           relativePath = urlObj.pathname
           console.log(`📁 [PROCESS TEMP] URL absoluta detectada, ruta relativa extraída: ${relativePath}`)
+          
+          // Verificar que es un archivo temporal antes de procesar
+          if (!relativePath.includes('/uploads/temp/')) {
+            console.warn(`⚠️ [PROCESS TEMP] URL absoluta no es un archivo temporal, omitiendo: ${tempUrl}`)
+            continue
+          }
         }
         
         // Construir la ruta física del archivo temporal

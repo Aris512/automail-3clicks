@@ -325,3 +325,58 @@ router.get('/uploads/temp/:tenantId/:fileName', async ({ params, response }: Htt
   }
 }).use(middleware.auth())
 
+// Ruta para servir archivos de attachments (públicos para que funcionen en correos)
+router.get('/uploads/attachments/:tenantId/:fileName', async ({ params, response }: HttpContext) => {
+  const fs = await import('fs/promises')
+  const path = await import('path')
+  
+  const { tenantId, fileName } = params
+  const filePath = path.join(process.cwd(), 'public', 'uploads', 'attachments', tenantId, fileName)
+  
+  try {
+    // Verificar que el archivo existe
+    const fileStats = await fs.stat(filePath)
+    if (!fileStats.isFile()) {
+      return response.status(404).json({
+        success: false,
+        message: 'Archivo no encontrado'
+      })
+    }
+    
+    // Determinar Content-Type basado en la extensión
+    const ext = path.extname(fileName).toLowerCase()
+    const contentTypes: Record<string, string> = {
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.png': 'image/png',
+      '.gif': 'image/gif',
+      '.webp': 'image/webp',
+      '.pdf': 'application/pdf',
+      '.rar': 'application/x-rar-compressed',
+      '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      '.xls': 'application/vnd.ms-excel',
+      '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      '.txt': 'text/plain',
+    }
+    const contentType = contentTypes[ext] || 'application/octet-stream'
+    
+    // Leer el archivo y enviarlo
+    const fileBuffer = await fs.readFile(filePath)
+    
+    // Headers para permitir que se carguen en correos
+    response.header('Content-Type', contentType)
+    response.header('Content-Length', fileStats.size.toString())
+    response.header('Cache-Control', 'public, max-age=31536000')
+    response.header('Access-Control-Allow-Origin', '*') // Permitir CORS para correos
+    
+    return response.send(fileBuffer)
+  } catch (error: any) {
+    console.error('[SERVE ATTACHMENT FILE] Error:', error.message)
+    console.error('[SERVE ATTACHMENT FILE] Path intentado:', filePath)
+    return response.status(404).json({
+      success: false,
+      message: 'Archivo no encontrado'
+    })
+  }
+}) // ⚠️ IMPORTANTE: NO usar middleware.auth() aquí para que sea accesible desde correos
+
