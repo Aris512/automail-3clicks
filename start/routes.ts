@@ -142,6 +142,10 @@ router.get('/cancelaciones', ({ inertia, response, auth }: HttpContext) => {
   })
 }).use(middleware.auth())
 
+// Importar SendingsController
+const SendingsController = () => import('#controllers/sendings_controller')
+router.get('/envios', [SendingsController, 'index']).use(middleware.auth())
+
 router.get('/configuracion-tenant', ({ inertia, response, auth }: HttpContext) => {
   response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
   response.header('Pragma', 'no-cache')
@@ -207,6 +211,13 @@ router.post('/templates', [TemplatesController, 'store']).use(middleware.auth())
 router.get('/templates/:id', [TemplatesController, 'show']).use(middleware.auth())
 router.put('/templates/:id', [TemplatesController, 'update']).use(middleware.auth())
 router.delete('/templates/:id', [TemplatesController, 'destroy']).use(middleware.auth())
+
+// Rutas para envíos (sendings)
+router.get('/sendings', [SendingsController, 'index']).use(middleware.auth())
+router.post('/sendings', [SendingsController, 'store']).use(middleware.auth())
+router.get('/sendings/:id', [SendingsController, 'show']).use(middleware.auth())
+router.put('/sendings/:id', [SendingsController, 'update']).use(middleware.auth())
+router.delete('/sendings/:id', [SendingsController, 'destroy']).use(middleware.auth())
 
 // Rutas para email setups
 const EmailSetupsController = () => import('#controllers/email_setups_controller')

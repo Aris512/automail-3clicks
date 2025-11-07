@@ -3,6 +3,8 @@ import { BaseModel, column, belongsTo } from '@adonisjs/lucid/orm'
 import Tenant from './tenant.js'
 import Subscriber from './subscriber.js'
 import Template from './template.js'
+import Campaign from './campaign.js'
+import CampaignStage from './campaign_stage.js'
 import type { BelongsTo } from '@adonisjs/lucid/types/relations'
 
 export default class Sending extends BaseModel {
@@ -17,6 +19,12 @@ export default class Sending extends BaseModel {
 
   @column()
   declare templateId: number | null
+
+  @column()
+  declare campaignId: number | null
+
+  @column()
+  declare campaignStageId: number | null
 
   @column.dateTime()
   declare sentAt: DateTime | null
@@ -46,5 +54,11 @@ export default class Sending extends BaseModel {
 
   @belongsTo(() => Template)
   declare template: BelongsTo<typeof Template> | null
+
+  @belongsTo(() => Campaign)
+  declare campaign: BelongsTo<typeof Campaign> | null
+
+  @belongsTo(() => CampaignStage)
+  declare campaignStage: BelongsTo<typeof CampaignStage> | null
 }
 

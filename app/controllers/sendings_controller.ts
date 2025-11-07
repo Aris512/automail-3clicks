@@ -3,6 +3,8 @@ import Sending from '#models/sending'
 import TenantUser from '#models/tenant_user'
 import Subscriber from '#models/subscriber'
 import Template from '#models/template'
+import Campaign from '#models/campaign'
+import CampaignStage from '#models/campaign_stage'
 import { inject } from '@adonisjs/core'
 import { DateTime } from 'luxon'
 
@@ -11,7 +13,7 @@ export default class SendingsController {
   /**
    * Display una lista de envíos
    */
-  async index({ auth, response }: HttpContext) {
+  async index({ auth, inertia, response, request }: HttpContext) {
     const user = auth.user!
     
     // Obtener el tenant del usuario
@@ -21,22 +23,69 @@ export default class SendingsController {
       .first()
 
     if (!tenantUser) {
-      return response.json({
-        success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo',
-        data: []
-      })
+      if (request.accepts(['json'])) {
+        return response.json({
+          success: false,
+          message: 'Usuario no tiene acceso a ningún tenant activo',
+          data: []
+        })
+      }
+      return response.redirect('/dashboard')
     }
 
     const sendings = await Sending.query()
       .where('tenantId', tenantUser.tenantId)
       .preload('contact')
       .preload('template')
+      .preload('campaign')
+      .preload('campaignStage')
       .orderBy('createdAt', 'desc')
     
-    return response.json({
-      success: true,
-      data: sendings
+    const sendingsData = sendings.map(sending => ({
+      id: sending.id,
+      contactId: sending.contactId,
+      templateId: sending.templateId,
+      campaignId: sending.campaignId,
+      campaignStageId: sending.campaignStageId,
+      sentAt: sending.sentAt ? sending.sentAt.toISO() : null,
+      sentSubject: sending.sentSubject,
+      sentBody: sending.sentBody,
+      deliveryStatus: sending.deliveryStatus,
+      messageId: sending.messageId,
+      createdAt: sending.createdAt.toISO(),
+      contact: sending.contact ? {
+        id: sending.contact.id,
+        email: sending.contact.email,
+        name: sending.contact.name
+      } : null,
+      template: sending.template ? {
+        id: sending.template.id,
+        name: sending.template.name,
+        subject: sending.template.subject
+      } : null,
+      campaign: sending.campaign ? {
+        id: sending.campaign.id,
+        name: sending.campaign.name
+      } : null,
+      campaignStage: sending.campaignStage ? {
+        id: sending.campaignStage.id,
+        name: sending.campaignStage.name,
+        stageNumber: sending.campaignStage.stageNumber
+      } : null
+    }))
+
+    // Si la petición acepta JSON, devolver JSON (API)
+    if (request.accepts(['json'])) {
+      return response.json({
+        success: true,
+        data: sendingsData
+      })
+    }
+
+    // Si no, devolver Inertia (página web)
+    return inertia.render('auth/envios', {
+      user,
+      sendings: sendingsData
     })
   }
 
@@ -62,6 +111,8 @@ export default class SendingsController {
     const data = request.only([
       'contactId',
       'templateId',
+      'campaignId',
+      'campaignStageId',
       'sentAt',
       'sentSubject',
       'sentBody',
@@ -105,11 +156,51 @@ export default class SendingsController {
       }
     }
 
+    // Verificar que la campaña pertenezca al tenant (si se proporciona)
+    if (data.campaignId) {
+      const campaign = await Campaign.query()
+        .where('id', data.campaignId)
+        .where('tenantId', tenantUser.tenantId)
+        .first()
+
+      if (!campaign) {
+        return response.status(404).json({
+          success: false,
+          message: 'Campaña no encontrada o no pertenece a tu tenant'
+        })
+      }
+    }
+
+    // Verificar que la etapa pertenezca al tenant y a la campaña (si se proporciona)
+    if (data.campaignStageId) {
+      const campaignStage = await CampaignStage.query()
+        .where('id', data.campaignStageId)
+        .where('tenantId', tenantUser.tenantId)
+        .first()
+
+      if (!campaignStage) {
+        return response.status(404).json({
+          success: false,
+          message: 'Etapa de campaña no encontrada o no pertenece a tu tenant'
+        })
+      }
+
+      // Si también se proporciona campaignId, verificar que la etapa pertenezca a esa campaña
+      if (data.campaignId && campaignStage.campaignId !== data.campaignId) {
+        return response.status(400).json({
+          success: false,
+          message: 'La etapa de campaña no pertenece a la campaña especificada'
+        })
+      }
+    }
+
     try {
       const sending = await Sending.create({
         tenantId: tenantUser.tenantId,
         contactId: data.contactId,
         templateId: data.templateId || null,
+        campaignId: data.campaignId || null,
+        campaignStageId: data.campaignStageId || null,
         sentAt: data.sentAt ? DateTime.fromISO(data.sentAt) : null,
         sentSubject: data.sentSubject || null,
         sentBody: data.sentBody || null,
@@ -119,6 +210,8 @@ export default class SendingsController {
 
       await sending.load('contact')
       await sending.load('template')
+      await sending.load('campaign')
+      await sending.load('campaignStage')
 
       return response.status(201).json({
         success: true,
@@ -159,6 +252,8 @@ export default class SendingsController {
         .where('tenantId', tenantUser.tenantId)
         .preload('contact')
         .preload('template')
+        .preload('campaign')
+        .preload('campaignStage')
         .firstOrFail()
       
       return response.json({
@@ -201,6 +296,8 @@ export default class SendingsController {
       const data = request.only([
         'contactId',
         'templateId',
+        'campaignId',
+        'campaignStageId',
         'sentAt',
         'sentSubject',
         'sentBody',
@@ -238,9 +335,50 @@ export default class SendingsController {
         }
       }
 
+      // Verificar que la campaña pertenezca al tenant (si se proporciona)
+      if (data.campaignId) {
+        const campaign = await Campaign.query()
+          .where('id', data.campaignId)
+          .where('tenantId', tenantUser.tenantId)
+          .first()
+
+        if (!campaign) {
+          return response.status(404).json({
+            success: false,
+            message: 'Campaña no encontrada o no pertenece a tu tenant'
+          })
+        }
+      }
+
+      // Verificar que la etapa pertenezca al tenant y a la campaña (si se proporciona)
+      if (data.campaignStageId) {
+        const campaignStage = await CampaignStage.query()
+          .where('id', data.campaignStageId)
+          .where('tenantId', tenantUser.tenantId)
+          .first()
+
+        if (!campaignStage) {
+          return response.status(404).json({
+            success: false,
+            message: 'Etapa de campaña no encontrada o no pertenece a tu tenant'
+          })
+        }
+
+        // Si también se proporciona campaignId, verificar que la etapa pertenezca a esa campaña
+        const finalCampaignId = data.campaignId || sending.campaignId
+        if (finalCampaignId && campaignStage.campaignId !== finalCampaignId) {
+          return response.status(400).json({
+            success: false,
+            message: 'La etapa de campaña no pertenece a la campaña especificada'
+          })
+        }
+      }
+
       sending.merge({
         contactId: data.contactId || sending.contactId,
         templateId: data.templateId !== undefined ? (data.templateId || null) : sending.templateId,
+        campaignId: data.campaignId !== undefined ? (data.campaignId || null) : sending.campaignId,
+        campaignStageId: data.campaignStageId !== undefined ? (data.campaignStageId || null) : sending.campaignStageId,
         sentAt: data.sentAt ? DateTime.fromISO(data.sentAt) : sending.sentAt,
         sentSubject: data.sentSubject !== undefined ? data.sentSubject : sending.sentSubject,
         sentBody: data.sentBody !== undefined ? data.sentBody : sending.sentBody,
@@ -251,6 +389,8 @@ export default class SendingsController {
       await sending.save()
       await sending.load('contact')
       await sending.load('template')
+      await sending.load('campaign')
+      await sending.load('campaignStage')
 
       return response.status(200).json({
         success: true,

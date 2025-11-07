@@ -156,13 +156,89 @@ export default class CampaignEmailService {
 
           if (startTime > now) {
             console.log(
-              `La etapa ${stage.id} (${stage.name}) está programada para ${startTime.toISO()}, aún no es momento de enviar`
+              `La etapa ${stage.id} (${stage.name}) esta programada para ${startTime.toISO()}, aun no es momento de enviar`
             )
             continue
           }
         }
 
+        // NUEVA VERIFICACIÓN: Verificar si la etapa ya fue completamente procesada
+        // Obtener las plantillas activas de esta etapa
+        const stageTemplatesCheck = await CampaignStageTemplate.query()
+          .where('campaignStageId', stage.id)
+          .preload('template')
+
+        const activeTemplates = stageTemplatesCheck.filter(
+          (st) => st.template && st.template.active
+        )
+
+        if (activeTemplates.length === 0) {
+          console.warn(`La etapa ${stage.id} no tiene plantillas activas asociadas`)
+          continue
+        }
+
+        // Calcular cuántos envíos deberían haberse hecho
+        // (número de suscriptores × número de templates activos)
+        const expectedSendings = subscribers.filter((sub) => {
+          const subscriberListIds = sub.lists.map((list) => list.id)
+          return listIds.some((listId) => subscriberListIds.includes(listId))
+        }).length * activeTemplates.length
+
+        // Verificar cuántos envíos exitosos ya existen para esta etapa
+        const existingSendingsCount = await Sending.query()
+          .where('tenantId', campaign.tenantId)
+          .where('campaignId', campaignId)
+          .where('campaignStageId', stage.id)
+          .where('deliveryStatus', 'sent')
+          .count('* as total')
+          .first()
+
+        const existingSentCount = Number(existingSendingsCount?.$extras.total || 0)
+
+        // Si todos los envíos esperados ya fueron enviados
+        if (existingSentCount >= expectedSendings && expectedSendings > 0) {
+          // Verificar si la etapa fue actualizada después del último envío
+          const lastSending = await Sending.query()
+            .where('tenantId', campaign.tenantId)
+            .where('campaignId', campaignId)
+            .where('campaignStageId', stage.id)
+            .where('deliveryStatus', 'sent')
+            .orderBy('sentAt', 'desc')
+            .first()
+
+          if (lastSending && lastSending.sentAt) {
+            // Si la etapa fue actualizada después del último envío, procesarla de nuevo
+            const stageUpdatedAt = stage.updatedAt || stage.createdAt
+            const lastSentAt = lastSending.sentAt
+
+            if (stageUpdatedAt <= lastSentAt) {
+              // La etapa no fue actualizada después del último envío, omitir
+              console.log(
+                `La etapa ${stage.id} (${stage.name}) ya fue completamente procesada (${existingSentCount}/${expectedSendings} envíos) y no ha sido actualizada, omitiendo`
+              )
+              continue
+            } else {
+              // La etapa fue actualizada, procesarla de nuevo
+              console.log(
+                `La etapa ${stage.id} (${stage.name}) fue actualizada después del último envío (${stageUpdatedAt.toISO()} > ${lastSentAt.toISO()}), reprocesando...`
+              )
+            }
+          } else {
+            // No hay envíos previos, pero el conteo dice que están todos enviados (caso raro)
+            console.log(
+              `La etapa ${stage.id} (${stage.name}) parece estar procesada pero sin registro de último envío, omitiendo`
+            )
+            continue
+          }
+        } else if (existingSentCount > 0) {
+          // Hay algunos envíos pero no todos, continuar procesando
+          console.log(
+            `La etapa ${stage.id} (${stage.name}) tiene ${existingSentCount}/${expectedSendings} envíos completados, continuando procesamiento...`
+          )
+        }
+
         // Obtener las plantillas de esta etapa desde campaign_stage_templates
+        // (ya las tenemos arriba, pero las reobtenemos para mantener el código existente)
         const stageTemplates = await CampaignStageTemplate.query()
           .where('campaignStageId', stage.id)
           .preload('template')
@@ -177,7 +253,7 @@ export default class CampaignEmailService {
           const template = stageTemplate.template
 
           if (!template || !template.active) {
-            console.warn(`La plantilla ${stageTemplate.templatesId} no está activa`)
+            console.warn(`La plantilla ${stageTemplate.templatesId} no esta activa`)
             continue
           }
 
@@ -192,18 +268,19 @@ export default class CampaignEmailService {
                 continue
               }
 
-              // Verificar si ya se envió este template a este suscriptor en esta etapa
-              // Esto evita reenvíos si el scheduler se ejecuta múltiples veces
+              // Verificar si ya se envió este template a este suscriptor en esta etapa específica
               const existingSending = await Sending.query()
                 .where('tenantId', campaign.tenantId)
                 .where('contactId', subscriber.id)
                 .where('templateId', template.id)
+                .where('campaignId', campaignId)
+                .where('campaignStageId', stage.id)
                 .where('deliveryStatus', 'sent')
                 .first()
 
               if (existingSending) {
                 console.log(
-                  `El template ${template.id} ya fue enviado al suscriptor ${subscriber.id} (${subscriber.email}), omitiendo`
+                  `El template ${template.id} ya fue enviado al suscriptor ${subscriber.id} en la etapa ${stage.id} de la campaña ${campaignId}, omitiendo`
                 )
                 continue
               }
@@ -228,6 +305,8 @@ export default class CampaignEmailService {
                 tenantId: campaign.tenantId,
                 contactId: subscriber.id,
                 templateId: template.id,
+                campaignId: campaignId,
+                campaignStageId: stage.id,
                 sentAt: DateTime.now(),
                 sentSubject: rendered.subject,
                 sentBody: rendered.body,
@@ -252,6 +331,8 @@ export default class CampaignEmailService {
                   tenantId: campaign.tenantId,
                   contactId: subscriber.id,
                   templateId: template.id,
+                  campaignId: campaignId,
+                  campaignStageId: stage.id,
                   sentAt: null,
                   sentSubject: null,
                   sentBody: null,
@@ -259,7 +340,7 @@ export default class CampaignEmailService {
                   messageId: null,
                 })
               } catch (dbError) {
-                console.error('Error al registrar envío fallido:', dbError)
+                console.error('Error al registrar envio fallido:', dbError)
               }
             }
           }

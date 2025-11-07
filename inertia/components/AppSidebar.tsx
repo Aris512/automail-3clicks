@@ -122,6 +122,14 @@ export default function AppSidebar({ user, children, pageTitle, isFirstVisit = f
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton asChild className="transition-all duration-300 ease-in-out hover:bg-orange-50 hover:text-orange-700 hover:scale-[1.02] hover:shadow-sm">
+                    <Link href="/envios">
+                      <Mail className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover:scale-110" />
+                      <span className="transition-colors duration-300 ease-in-out">Envíos</span>
+                    </Link>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton asChild className="transition-all duration-300 ease-in-out hover:bg-orange-50 hover:text-orange-700 hover:scale-[1.02] hover:shadow-sm">
                     <Link href="/cancelaciones">
                       <UserX className="h-4 w-4 transition-transform duration-300 ease-in-out group-hover:scale-110" />
                       <span className="transition-colors duration-300 ease-in-out">Cancelaciones</span>
