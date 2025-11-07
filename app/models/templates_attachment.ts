@@ -9,10 +9,13 @@ export default class TemplateAttachment extends BaseModel {
   @column({ isPrimary: true })
   declare id: number
 
-  @column()
+  @column({ columnName: 'tenant_id' })
+  declare tenantId: number
+
+  @column({ columnName: 'attachment_id' })
   declare attachmentId: number
 
-  @column()
+  @column({ columnName: 'template_id' })
   declare templateId: number
 
   @column.dateTime({ autoCreate: true })

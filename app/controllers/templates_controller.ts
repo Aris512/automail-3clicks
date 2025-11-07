@@ -3,7 +3,6 @@ import Template from '#models/template'
 import TenantUser from '#models/tenant_user'
 import Attachment from '#models/attachment'
 import TemplateAttachment from '#models/templates_attachment'
-import db from '@adonisjs/lucid/services/db'
 import { inject } from '@adonisjs/core'
 import fs from 'fs/promises'
 import path from 'path'
@@ -249,21 +248,35 @@ export default class TemplatesController {
           .first()
 
         if (attachment) {
-          // Verificar si la relación ya existe
+          // Verificar que el attachment pertenece al mismo tenant
+          if (attachment.tenantId !== tenantId) {
+            console.log(`⚠️ [ASSOCIATE IMAGES] Attachment ID ${attachment.id} pertenece a otro tenant (${attachment.tenantId} vs ${tenantId}), omitiendo`)
+            notFoundCount++
+            continue
+          }
+
+          // Verificar si la relación ya existe (incluyendo tenantId para mayor seguridad)
           const existingRelation = await TemplateAttachment.query()
+            .where('tenantId', tenantId)
             .where('templateId', templateId)
             .where('attachmentId', attachment.id)
             .first()
 
           if (!existingRelation) {
-            await TemplateAttachment.create({
-              templateId: templateId,
-              attachmentId: attachment.id
-            })
-            console.log(`✅ [ASSOCIATE IMAGES] Relación creada: Attachment ID ${attachment.id} -> Template ID ${templateId}`)
-            createdCount++
+            try {
+              await TemplateAttachment.create({
+                tenantId: tenantId,
+                templateId: templateId,
+                attachmentId: attachment.id
+              })
+              console.log(`✅ [ASSOCIATE IMAGES] Relación creada: Attachment ID ${attachment.id} -> Template ID ${templateId}`)
+              createdCount++
+            } catch (error: any) {
+              console.error(`❌ [ASSOCIATE IMAGES] Error al crear relación para Attachment ID ${attachment.id}:`, error.message)
+              // Continuar con el siguiente attachment
+            }
           } else {
-            console.log(`⏭️ [ASSOCIATE IMAGES] Relación ya existe: Attachment ID ${attachment.id}`)
+            console.log(`⏭️ [ASSOCIATE IMAGES] Relación ya existe: Attachment ID ${attachment.id} -> Template ID ${templateId}`)
             skippedCount++
           }
         } else {
@@ -295,8 +308,9 @@ export default class TemplatesController {
       console.log(`🔄 [REPLACE ATTACHMENTS] Tenant ID: ${tenantId}`)
       console.log(`🔄 [REPLACE ATTACHMENTS] Tamaño del contenido: ${htmlContent.length} caracteres`)
       
-      // Obtener las relaciones existentes antes de eliminar
+      // Obtener las relaciones existentes antes de eliminar (filtrando por tenantId)
       const existingRelations = await TemplateAttachment.query()
+        .where('tenantId', tenantId)
         .where('templateId', templateId)
         .preload('attachment')
       
@@ -313,8 +327,9 @@ export default class TemplatesController {
         })
       }
       
-      // Eliminar todas las relaciones existentes para esta plantilla
+      // Eliminar todas las relaciones existentes para esta plantilla (filtrando por tenantId)
       const deletedCount = await TemplateAttachment.query()
+        .where('tenantId', tenantId)
         .where('templateId', templateId)
         .delete()
       
@@ -322,7 +337,12 @@ export default class TemplatesController {
 
       // Ahora crear las nuevas relaciones
       console.log(`🔄 [REPLACE ATTACHMENTS] Creando nuevas relaciones...`)
-      await this.associateImagesWithTemplate(templateId, tenantId, htmlContent)
+      try {
+        await this.associateImagesWithTemplate(templateId, tenantId, htmlContent)
+      } catch (error) {
+        console.error(`❌ [REPLACE ATTACHMENTS] Error al asociar imágenes:`, error)
+        // No lanzar el error, pero registrar el problema
+      }
       
       // Extraer URLs de imágenes y adjuntos del nuevo contenido para obtener IDs de los nuevos attachments
       const attachmentUrlRegex = /(?:src|href|data-src)=["'](\/uploads\/attachments\/[^"']+)["']/g
@@ -373,14 +393,18 @@ export default class TemplatesController {
               .first()
             
             if (orphanAttachment) {
-              // Verificar si este attachment aún tiene relaciones con otras plantillas
+              // Verificar si este attachment aún tiene relaciones con otras plantillas (del mismo tenant)
               const otherRelations = await TemplateAttachment.query()
+                .where('tenantId', tenantId)
                 .where('attachmentId', orphanId)
                 .first()
               
               if (!otherRelations) {
-                // No tiene relaciones con ninguna plantilla, eliminarlo
-                await Attachment.query().where('id', orphanId).delete()
+                // No tiene relaciones con ninguna plantilla del mismo tenant, eliminarlo
+                await Attachment.query()
+                  .where('id', orphanId)
+                  .where('tenantId', tenantId)
+                  .delete()
                 console.log(`🗑️ [REPLACE ATTACHMENTS] Attachment huérfano eliminado: ID ${orphanId}`)
                 deletedAttachments++
               } else {
@@ -608,10 +632,15 @@ export default class TemplatesController {
 
   /**
    * Eliminar una plantilla
+   * Usa la tabla pivote templates_attachments para determinar qué attachments eliminar
+   * Solo elimina attachments que no estén relacionados con otros templates
    */
   async destroy({ params, response, auth }: HttpContext) {
     const user = auth.user!
     const { id } = params
+    
+    console.log(`\n🗑️ [DESTROY TEMPLATE] ===============================`)
+    console.log(`🗑️ [DESTROY TEMPLATE] Iniciando eliminación de template ID: ${id}`)
     
     // Obtener el tenant del usuario
     const tenantUser = await TenantUser.query()
@@ -620,11 +649,14 @@ export default class TemplatesController {
       .first()
 
     if (!tenantUser) {
+      console.error('❌ [DESTROY TEMPLATE] Usuario sin tenant activo')
       return response.status(400).json({
         success: false,
         message: 'Usuario no tiene acceso a ningún tenant activo'
       })
     }
+
+    console.log(`🏢 [DESTROY TEMPLATE] Tenant ID: ${tenantUser.tenantId}`)
 
     // Verificar que la plantilla existe y pertenece al tenant
     const template = await Template.query()
@@ -633,59 +665,135 @@ export default class TemplatesController {
       .first()
 
     if (!template) {
+      console.error(`❌ [DESTROY TEMPLATE] Template ${id} no encontrado`)
       return response.status(404).json({
         success: false,
         message: 'Plantilla no encontrada'
       })
     }
 
-    // Obtener todos los attachments relacionados con esta plantilla
+    console.log(`✅ [DESTROY TEMPLATE] Template encontrado: ${template.name}`)
+
+    // Paso 1: Obtener todas las relaciones desde la tabla pivote templates_attachments
     const templateAttachments = await TemplateAttachment.query()
+      .where('tenantId', tenantUser.tenantId)
       .where('templateId', id)
       .preload('attachment')
 
-    console.log(`📎 [DESTROY] Encontrados ${templateAttachments.length} attachments asociados`)
+    console.log(`📎 [DESTROY TEMPLATE] Encontradas ${templateAttachments.length} relaciones en templates_attachments`)
 
-    // Paso 1: Eliminar las relaciones en templates_attachments
-    const deletedRelations = await TemplateAttachment.query()
-      .where('templateId', id)
-      .where('tenantId', tenantUser.tenantId)
-      .delete()
-    
-    console.log(`🗑️ [DESTROY] Eliminadas ${deletedRelations} relaciones en templates_attachments`)
+    // Paso 2: Identificar attachments que solo pertenecen a este template
+    const attachmentsToDelete: number[] = []
+    const attachmentsToKeep: number[] = []
 
-    // Paso 2: Obtener IDs únicos de attachments para eliminar
-    const attachmentIds = templateAttachments
-      .map(ta => ta.attachment?.id)
-      .filter((id): id is number => id !== undefined)
-    
-    console.log(`📎 [DESTROY] IDs de attachments a eliminar:`, attachmentIds)
-
-    // Paso 3: Eliminar registros de attachments de la BD
     for (const templateAttachment of templateAttachments) {
-      if (templateAttachment.attachment) {
-        const attachment = templateAttachment.attachment
-        
-        try {
-          // Eliminar el registro de attachment de la BD
-          await Attachment.query()
-            .where('id', attachment.id)
-            .delete()
-          
-          console.log(`✅ [DESTROY] Attachment eliminado de BD: ${attachment.id}`)
-          
-        } catch (error) {
-          console.error(`❌ [DESTROY] Error al eliminar attachment ${attachment.id} de BD:`, error)
-        }
+      if (!templateAttachment.attachment) {
+        console.warn(`⚠️ [DESTROY TEMPLATE] Relación sin attachment: ${templateAttachment.id}`)
+        continue
+      }
+
+      const attachmentId = templateAttachment.attachment.id
+
+      // Verificar si este attachment tiene otras relaciones con otros templates
+      const otherRelations = await TemplateAttachment.query()
+        .where('tenantId', tenantUser.tenantId)
+        .where('attachmentId', attachmentId)
+        .where('templateId', '!=', id)
+        .first()
+
+      if (!otherRelations) {
+        // Este attachment solo está relacionado con este template, se puede eliminar
+        attachmentsToDelete.push(attachmentId)
+        console.log(`🗑️ [DESTROY TEMPLATE] Attachment ${attachmentId} será eliminado (solo relacionado con este template)`)
+      } else {
+        // Este attachment está relacionado con otros templates, NO se elimina
+        attachmentsToKeep.push(attachmentId)
+        console.log(`⏭️ [DESTROY TEMPLATE] Attachment ${attachmentId} se mantiene (relacionado con otros templates)`)
       }
     }
 
-    // Paso 4: Eliminar la plantilla
+    console.log(`📊 [DESTROY TEMPLATE] Resumen:`)
+    console.log(`   - Attachments a eliminar: ${attachmentsToDelete.length}`)
+    console.log(`   - Attachments a mantener: ${attachmentsToKeep.length}`)
+
+    // Paso 3: Eliminar los archivos físicos de los attachments que se van a eliminar
+    let deletedFiles = 0
+    for (const attachmentId of attachmentsToDelete) {
+      try {
+        const attachment = await Attachment.query()
+          .where('id', attachmentId)
+          .where('tenantId', tenantUser.tenantId)
+          .first()
+
+        if (attachment && attachment.path) {
+          const filePath = path.join(process.cwd(), 'public', attachment.path)
+          
+          try {
+            await fs.unlink(filePath)
+            console.log(`🗑️ [DESTROY TEMPLATE] Archivo físico eliminado: ${attachment.path}`)
+            deletedFiles++
+          } catch (fileError: any) {
+            if (fileError.code !== 'ENOENT') {
+              // Si el archivo no existe, no es un error crítico
+              console.warn(`⚠️ [DESTROY TEMPLATE] No se pudo eliminar archivo físico ${attachment.path}:`, fileError.message)
+            } else {
+              console.log(`ℹ️ [DESTROY TEMPLATE] Archivo físico ya no existe: ${attachment.path}`)
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`❌ [DESTROY TEMPLATE] Error al procesar attachment ${attachmentId}:`, error)
+      }
+    }
+
+    console.log(`✅ [DESTROY TEMPLATE] ${deletedFiles} archivos físicos eliminados`)
+
+    // Paso 4: Eliminar los registros de attachments de la BD (solo los que no tienen otras relaciones)
+    let deletedAttachments = 0
+    for (const attachmentId of attachmentsToDelete) {
+      try {
+        const deleted = await Attachment.query()
+          .where('id', attachmentId)
+          .where('tenantId', tenantUser.tenantId)
+          .delete()
+        
+        if (Array.isArray(deleted) && deleted.length > 0) {
+          console.log(`✅ [DESTROY TEMPLATE] Attachment eliminado de BD: ${attachmentId}`)
+          deletedAttachments++
+        } else if (!Array.isArray(deleted) && deleted) {
+          console.log(`✅ [DESTROY TEMPLATE] Attachment eliminado de BD: ${attachmentId}`)
+          deletedAttachments++
+        }
+      } catch (error) {
+        console.error(`❌ [DESTROY TEMPLATE] Error al eliminar attachment ${attachmentId} de BD:`, error)
+      }
+    }
+
+    console.log(`✅ [DESTROY TEMPLATE] ${deletedAttachments} attachments eliminados de BD`)
+
+    // Paso 5: Eliminar todas las relaciones en templates_attachments para este template
+    const deletedRelations = await TemplateAttachment.query()
+      .where('tenantId', tenantUser.tenantId)
+      .where('templateId', id)
+      .delete()
+    
+    console.log(`🗑️ [DESTROY TEMPLATE] Eliminadas ${deletedRelations} relaciones en templates_attachments`)
+
+    // Paso 6: Eliminar la plantilla
     await template.delete()
+    console.log(`✅ [DESTROY TEMPLATE] Template eliminado: ${template.name}`)
+
+    console.log(`✅ [DESTROY TEMPLATE] Proceso completado exitosamente`)
+    console.log(`🗑️ [DESTROY TEMPLATE] ===============================\n`)
 
     return response.json({
       success: true,
-      message: 'Plantilla eliminada exitosamente'
+      message: 'Plantilla eliminada exitosamente',
+      data: {
+        deletedAttachments: deletedAttachments,
+        keptAttachments: attachmentsToKeep.length,
+        deletedRelations: deletedRelations
+      }
     })
   }
 

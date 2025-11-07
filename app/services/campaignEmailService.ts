@@ -296,7 +296,7 @@ export default class CampaignEmailService {
               // Renderizar la plantilla con los datos del suscriptor
               const rendered = await this.renderService.render(template, subscriber)
 
-              // Procesar el HTML para convertir imágenes a base64 si es necesario
+              // Procesar el HTML para convertir rutas relativas de imágenes a URLs absolutas
               const processedHtml = await HtmlEmailProcessor.processHtmlForEmail(rendered.body)
 
               // Preparar el remitente

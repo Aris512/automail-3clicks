@@ -74,7 +74,7 @@ export default class MailController {
         messaje: message 
       })
 
-      // Procesar el HTML para convertir imágenes a base64 si es necesario
+      // Procesar el HTML para convertir rutas relativas de imágenes a URLs absolutas
       const processedHtml = await HtmlEmailProcessor.processHtmlForEmail(htmlContent)
 
       // Enviar el correo
