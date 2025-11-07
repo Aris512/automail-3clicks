@@ -15,7 +15,7 @@ export async function startScheduler() {
   // Ejecutar cada minuto para verificar campañas programadas
   //cambio de tiempo de ejecucion
   //ejemplo de cron.schedule('0 9 * * *', async () => { -> cada día a las 9:00 A.M
-  cron.schedule('0 9 * * *', async () => {
+  cron.schedule('* * * * *', async () => {
     // Importar dinámicamente el servicio para evitar problemas de carga circular
     const { DateTime } = await import('luxon')
     const executionStart = DateTime.now()
@@ -137,7 +137,7 @@ export async function startScheduler() {
       const executionDuration = DateTime.now().diff(executionStart).as('seconds')
       if (totalProcessed > 0) {
         logger.info(
-          `[Scheduler] Ejecución completada en ${executionDuration.toFixed(2)}s: ${totalProcessed} etapa(s) procesada(s), ${totalSent} email(s) enviado(s), ${totalFailed} fallido(s)`
+          `[Scheduler] Ejecucion completada en ${executionDuration.toFixed(2)}s: ${totalProcessed} etapa(s) procesada(s), ${totalSent} email(s) enviado(s), ${totalFailed} fallido(s)`
         )
       } else {
         logger.debug(`[Scheduler] Ejecucion completada en ${executionDuration.toFixed(2)}s: No se procesaron etapas en este ciclo`)

@@ -3,7 +3,7 @@ import AppSidebar from '~/components/AppSidebar'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { Mail, Eye, Trash2, RefreshCw, User, FileText, CheckCircle, XCircle, Clock, AlertCircle, Filter, X, Search } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 
 interface User {
   id: number
@@ -48,10 +48,9 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
   const [currentSendings, setCurrentSendings] = useState<Sending[]>(sendings)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [viewingSending, setViewingSending] = useState<Sending | null>(null)
-  const [sendingToDelete, setSendingToDelete] = useState<Sending | null>(null)
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
-  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false)
-  const [isDeletingAll, setIsDeletingAll] = useState(false)
+  const [selectedSendings, setSelectedSendings] = useState<Set<number>>(new Set())
+  const [showDeleteSelectedConfirm, setShowDeleteSelectedConfirm] = useState(false)
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false)
   
   // Estados para filtros
   const [filterContact, setFilterContact] = useState<string>('')
@@ -177,6 +176,30 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
   // Verificar si hay filtros activos
   const hasActiveFilters = searchTerm || filterContact || filterTemplate || filterStatus || filterDateFrom || filterDateTo
 
+  // Limpiar selección cuando cambian los filtros
+  useEffect(() => {
+    // Limpiar solo los IDs que ya no están en los envíos filtrados
+    setSelectedSendings(prev => {
+      const filteredIds = new Set(filteredSendings.map(s => s.id))
+      const newSet = new Set(Array.from(prev).filter(id => filteredIds.has(id)))
+      return newSet
+    })
+  }, [filteredSendings])
+
+  // Deseleccionar todo cuando se presiona la tecla Esc
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && selectedSendings.size > 0) {
+        setSelectedSendings(new Set())
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [selectedSendings.size])
+
   // Función para refrescar la lista de envíos
   const refreshSendings = async () => {
     setIsRefreshing(true)
@@ -204,6 +227,7 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
             contact: sending.contact,
             template: sending.template
           })))
+          setSelectedSendings(new Set())
           showSuccess('Lista de envíos actualizada correctamente')
         } else {
           showError('Error al actualizar la lista de envíos')
@@ -230,65 +254,49 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
     setViewingSending(null)
   }
 
-  // Función para abrir confirmación de eliminación
-  const handleDelete = (sending: Sending) => {
-    setSendingToDelete(sending)
-    setShowDeleteConfirm(true)
+  // Funciones para selección múltiple
+  const handleSelectSending = (sendingId: number) => {
+    setSelectedSendings(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(sendingId)) {
+        newSet.delete(sendingId)
+      } else {
+        newSet.add(sendingId)
+      }
+      return newSet
+    })
   }
 
-  // Función para confirmar eliminación
-  const confirmDelete = async () => {
-    if (!sendingToDelete) return
-
-    try {
-      const response = await fetch(`/sendings/${sendingToDelete.id}`, {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken()
-        },
-        credentials: 'include'
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        setCurrentSendings(currentSendings.filter(s => s.id !== sendingToDelete.id))
-        showSuccess('Envío eliminado exitosamente')
-        setShowDeleteConfirm(false)
-        setSendingToDelete(null)
-      } else {
-        showError(result.message || 'Error al eliminar el envío')
-      }
-    } catch (error) {
-      console.error('Error al eliminar envío:', error)
-      showError('Error de conexión al eliminar el envío')
+  const handleSelectAll = () => {
+    if (selectedSendings.size === filteredSendings.length) {
+      // Deseleccionar todos
+      setSelectedSendings(new Set())
+    } else {
+      // Seleccionar todos los envíos filtrados
+      setSelectedSendings(new Set(filteredSendings.map(s => s.id)))
     }
   }
 
-  // Función para abrir confirmación de eliminar todo
-  const handleDeleteAll = () => {
-    if (currentSendings.length === 0) {
-      showError('No hay envíos para eliminar')
+  const handleDeleteSelected = () => {
+    if (selectedSendings.size === 0) {
+      showError('No hay envíos seleccionados para eliminar')
       return
     }
-    setShowDeleteAllConfirm(true)
+    setShowDeleteSelectedConfirm(true)
   }
 
-  // Función para confirmar eliminación de todos los envíos
-  const confirmDeleteAll = async () => {
-    if (currentSendings.length === 0) return
+  const confirmDeleteSelected = async () => {
+    if (selectedSendings.size === 0) return
 
-    setIsDeletingAll(true)
+    setIsDeletingSelected(true)
     let successCount = 0
     let errorCount = 0
 
     try {
-      // Eliminar todos los envíos en paralelo (sin importar filtros)
-      const deletePromises = currentSendings.map(async (sending) => {
+      // Eliminar los envíos seleccionados en paralelo
+      const deletePromises = Array.from(selectedSendings).map(async (sendingId) => {
         try {
-          const response = await fetch(`/sendings/${sending.id}`, {
+          const response = await fetch(`/sendings/${sendingId}`, {
             method: 'DELETE',
             headers: {
               'Content-Type': 'application/json',
@@ -314,8 +322,9 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
 
       await Promise.all(deletePromises)
 
-      // Limpiar todos los envíos
-      setCurrentSendings([])
+      // Remover los envíos eliminados de la lista
+      setCurrentSendings(prev => prev.filter(s => !selectedSendings.has(s.id)))
+      setSelectedSendings(new Set())
 
       // Mostrar mensajes con toasts
       if (errorCount === 0) {
@@ -324,12 +333,12 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
         showError(`Se eliminaron ${successCount} envío(s), pero ${errorCount} fallaron`)
       }
 
-      setShowDeleteAllConfirm(false)
+      setShowDeleteSelectedConfirm(false)
     } catch (error) {
-      console.error('Error al eliminar envíos:', error)
+      console.error('Error al eliminar envíos seleccionados:', error)
       showError('Error de conexión al eliminar los envíos')
     } finally {
-      setIsDeletingAll(false)
+      setIsDeletingSelected(false)
     }
   }
 
@@ -387,8 +396,21 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
         <div className="space-y-6">
           {/* Header con acciones */}
           <div className="space-y-4">
-            <div className="flex flex-col sm:flex-row justify-end items-start sm:items-center gap-4">
-              <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              {selectedSendings.size > 0 && (
+                <div className="flex items-center gap-3 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+                  <span className="text-sm font-medium text-blue-900">
+                    {selectedSendings.size} envío(s) seleccionado(s)
+                  </span>
+                  <button
+                    onClick={() => setSelectedSendings(new Set())}
+                    className="text-sm text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Deseleccionar todo
+                  </button>
+                </div>
+              )}
+              <div className="flex items-center gap-2 ml-auto">
                 {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
@@ -399,6 +421,17 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                     Limpiar
                   </button>
                 )}
+                {selectedSendings.size > 0 && (
+                  <button
+                    onClick={handleDeleteSelected}
+                    disabled={isDeletingSelected}
+                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                    title="Eliminar envíos seleccionados"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Eliminar Seleccionados ({selectedSendings.size})
+                  </button>
+                )}
                 <button
                   onClick={refreshSendings}
                   disabled={isRefreshing}
@@ -406,15 +439,6 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                 >
                   <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
                   Actualizar
-                </button>
-                <button
-                  onClick={handleDeleteAll}
-                  disabled={currentSendings.length === 0 || isDeletingAll}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
-                  title="Eliminar todos los envíos (sin importar filtros)"
-                >
-                  <Trash2 className="h-4 w-4" />
-                  Eliminar Todo
                 </button>
               </div>
             </div>
@@ -548,6 +572,23 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
               <table className="min-w-full divide-y divide-gray-200">
                 <thead className="bg-gray-50">
                   <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                      <input
+                        type="checkbox"
+                        checked={filteredSendings.length > 0 && selectedSendings.size === filteredSendings.length}
+                        ref={(input) => {
+                          if (input) {
+                            input.indeterminate = 
+                              filteredSendings.length > 0 && 
+                              selectedSendings.size > 0 && 
+                              selectedSendings.size < filteredSendings.length
+                          }
+                        }}
+                        onChange={handleSelectAll}
+                        className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded cursor-pointer"
+                        title="Seleccionar todos los envíos filtrados"
+                      />
+                    </th>
                     <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Contacto
                     </th>
@@ -570,7 +611,16 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredSendings.map((sending) => (
-                    <tr key={sending.id} className="hover:bg-gray-50">
+                    <tr key={sending.id} className={`hover:bg-gray-50 ${selectedSendings.has(sending.id) ? 'bg-blue-50' : ''}`}>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={selectedSendings.has(sending.id)}
+                          onChange={() => handleSelectSending(sending.id)}
+                          className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded cursor-pointer"
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center">
                           <User className="h-4 w-4 text-gray-400 mr-2" />
@@ -607,22 +657,13 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                         {formatDate(sending.sentAt)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <div className="flex items-center justify-end space-x-2">
-                          <button
-                            onClick={() => handleView(sending)}
-                            className="text-blue-600 hover:text-blue-900 transition-colors"
-                            title="Ver detalles del envío"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDelete(sending)}
-                            className="text-red-600 hover:text-red-900 transition-colors"
-                            title="Eliminar envío"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
-                        </div>
+                        <button
+                          onClick={() => handleView(sending)}
+                          className="text-blue-600 hover:text-blue-900 transition-colors"
+                          title="Ver detalles del envío"
+                        >
+                          <Eye className="h-4 w-4" />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -732,70 +773,33 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
           </div>
         )}
 
-        {/* Modal de Confirmación de Eliminación */}
-        {showDeleteConfirm && sendingToDelete && (
+        {/* Modal de Confirmación de Eliminar Seleccionados */}
+        {showDeleteSelectedConfirm && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
             <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
               <div className="p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">¿Eliminar envío?</h2>
-                <p className="text-gray-600 mb-6">
-                  Esta acción no se puede deshacer. Se eliminará permanentemente el registro del envío
-                  {sendingToDelete.contact && ` a ${sendingToDelete.contact.email}`}.
-                </p>
-                <div className="flex justify-end space-x-3">
-                  <button
-                    onClick={() => {
-                      setShowDeleteConfirm(false)
-                      setSendingToDelete(null)
-                    }}
-                    className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors"
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    onClick={confirmDelete}
-                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
-                  >
-                    Eliminar
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Modal de Confirmación de Eliminar Todo */}
-        {showDeleteAllConfirm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
-              <div className="p-6">
-                <h2 className="text-xl font-semibold text-gray-900 mb-4">¿Eliminar todos los envíos?</h2>
+                <h2 className="text-xl font-semibold text-gray-900 mb-4">¿Eliminar envíos seleccionados?</h2>
                 <p className="text-gray-600 mb-6">
                   Esta acción no se puede deshacer. Se eliminarán permanentemente{' '}
-                  <strong className="text-red-600">{currentSendings.length}</strong> envío(s) en total.
-                  {hasActiveFilters && (
-                    <span className="block mt-2 text-sm text-orange-600 font-medium">
-                      ⚠️ Se eliminarán TODOS los envíos, sin importar los filtros aplicados.
-                    </span>
-                  )}
+                  <strong className="text-red-600">{selectedSendings.size}</strong> envío(s) seleccionado(s).
                 </p>
                 <div className="flex justify-end space-x-3">
                   <button
-                    onClick={() => setShowDeleteAllConfirm(false)}
-                    disabled={isDeletingAll}
+                    onClick={() => setShowDeleteSelectedConfirm(false)}
+                    disabled={isDeletingSelected}
                     className="px-4 py-2 bg-gray-200 text-gray-800 rounded-lg hover:bg-gray-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     Cancelar
                   </button>
                   <button
-                    onClick={confirmDeleteAll}
-                    disabled={isDeletingAll}
+                    onClick={confirmDeleteSelected}
+                    disabled={isDeletingSelected}
                     className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    {isDeletingAll && (
+                    {isDeletingSelected && (
                       <RefreshCw className="h-4 w-4 animate-spin" />
                     )}
-                    {isDeletingAll ? 'Eliminando...' : 'Eliminar Todo'}
+                    {isDeletingSelected ? 'Eliminando...' : 'Eliminar'}
                   </button>
                 </div>
               </div>

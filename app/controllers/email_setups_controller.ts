@@ -27,6 +27,7 @@ export default class EmailSetupsController {
       const emailSetups = await EmailSetup.query()
         .where('tenantId', tenantUser.tenantId)
         .where('active', true)
+        .preload('smtpConfig')
         .orderBy('createdAt', 'desc')
       
       return response.json({

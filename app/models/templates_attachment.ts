@@ -10,9 +10,6 @@ export default class TemplateAttachment extends BaseModel {
   declare id: number
 
   @column()
-  declare tenantId: number
-
-  @column()
   declare attachmentId: number
 
   @column()

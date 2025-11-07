@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from '~/components/ui/select'
 import { AlertDialog } from '~/components/ui/alert-dialog'
+import { Dialog } from '~/components/ui/dialog'
 
 interface User {
   id: number
@@ -51,6 +52,13 @@ interface EmailSetup {
   active: boolean
   tenantId: number
   userId: number
+  smtpConfig?: {
+    id: number
+    port: string
+    isActive: boolean
+    host: string
+    name: string | null
+  } | null
 }
 
 interface List {
@@ -201,17 +209,11 @@ export default function Campanas({ user }: CampanasProps) {
     setEditingCampaign(null)
   }
 
-  // Abrir/cerrar formulario para crear
+  // Abrir modal para crear
   const handleCreate = () => {
     try {
-      if (showForm) {
-        // Si el formulario está abierto, cerrarlo
-        handleCloseForm()
-      } else {
-        // Si el formulario está cerrado, abrirlo
-        resetForm()
-        setShowForm(true)
-      }
+      resetForm()
+      setShowForm(true)
     } catch (error) {
       console.error('Error en handleCreate:', error)
       showError('Error', 'No se pudo abrir el formulario')
@@ -263,10 +265,12 @@ export default function Campanas({ user }: CampanasProps) {
     }
   }
 
-  // Cerrar formulario
+  // Cerrar formulario/modal
   const handleCloseForm = () => {
-    setShowForm(false)
-    resetForm()
+    if (!isSaving) {
+      setShowForm(false)
+      resetForm()
+    }
   }
 
   // Guardar campaña
@@ -458,192 +462,224 @@ export default function Campanas({ user }: CampanasProps) {
             </div>
             <Button 
               onClick={handleCreate} 
-              variant={showForm ? "outline" : "default"}
+              variant="default"
               className="gap-2"
             >
               <Plus className="h-4 w-4" />
-              {showForm ? 'Cancelar' : 'Nueva Campaña'}
+              Nueva Campaña
             </Button>
           </div>
 
-          {/* Formulario de Campaña */}
-          {showForm && (
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle>{editingCampaign ? 'Editar Campaña' : 'Nueva Campaña'}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <form onSubmit={handleSave} className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="name">Nombre de la Campaña *</Label>
-                      <Input
-                        id="name"
-                        type="text"
-                        value={formData.name}
-                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                        placeholder="Ej: Campaña de Bienvenida"
-                        required
-                      />
-                    </div>
+          {/* Modal de Campaña */}
+          <Dialog
+            open={showForm}
+            onOpenChange={(open) => {
+              if (!open && !isSaving) {
+                handleCloseForm()
+              } else {
+                setShowForm(open)
+              }
+            }}
+            title={editingCampaign ? 'Editar Campaña' : 'Nueva Campaña'}
+            maxWidth="2xl"
+            footer={
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseForm}
+                  disabled={isSaving}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="submit"
+                  form="campaign-form"
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Guardando...
+                    </>
+                  ) : (
+                    editingCampaign ? 'Actualizar Campaña' : 'Guardar Campaña'
+                  )}
+                </Button>
+              </>
+            }
+          >
+            <form id="campaign-form" onSubmit={handleSave} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="name">Nombre de la Campaña *</Label>
+                  <Input
+                    id="name"
+                    type="text"
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder="Ej: Campaña de Bienvenida"
+                    required
+                  />
+                </div>
 
-                    <div>
-                      <Label htmlFor="status">Estado</Label>
-                      <Select
-                        value={formData.status}
-                        onValueChange={(value: 'active' | 'paused' | 'completed') =>
-                          setFormData({ ...formData, status: value })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="active">Activa</SelectItem>
-                          <SelectItem value="paused">Pausada</SelectItem>
-                          <SelectItem value="completed">Completada</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
+                <div>
+                  <Label htmlFor="status">Estado</Label>
+                  <Select
+                    value={formData.status}
+                    onValueChange={(value: 'active' | 'paused' | 'completed') =>
+                      setFormData({ ...formData, status: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="active">Activa</SelectItem>
+                      <SelectItem value="paused">Pausada</SelectItem>
+                      <SelectItem value="completed">Completada</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="emailSetupId">Dominio (Email Setup)</Label>
-                      {loadingEmailSetups ? (
-                        <Input disabled placeholder="Cargando dominios..." />
-                      ) : (
-                        <Select
-                          value={formData.emailSetupId ? String(formData.emailSetupId) : undefined}
-                          onValueChange={(value) => {
-                            const newValue = value ? parseInt(value, 10) : null
-                            setFormData({ 
-                              ...formData, 
-                              emailSetupId: newValue
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="emailSetupId">Dominio (Email Setup)</Label>
+                  {loadingEmailSetups ? (
+                    <Input disabled placeholder="Cargando dominios..." />
+                  ) : (
+                    <Select
+                      value={formData.emailSetupId ? String(formData.emailSetupId) : undefined}
+                      onValueChange={(value) => {
+                        const newValue = value ? parseInt(value, 10) : null
+                        setFormData({ 
+                          ...formData, 
+                          emailSetupId: newValue
+                        })
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecciona un dominio (opcional)" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {emailSetups && Array.isArray(emailSetups) && emailSetups.length > 0 ? (
+                          emailSetups
+                            .filter(setup => setup.smtpConfig) // Solo mostrar configuraciones que tengan smtpConfig
+                            .map((setup) => {
+                              // Priorizar el nombre de la configuración SMTP, luego el nombre del email setup, y finalmente un fallback
+                              const displayName = setup.smtpConfig?.name || setup.name || 'Configuración SMTP'
+                              const emailText = setup.email || setup.from || ''
+                              const portText = setup.smtpConfig?.port ? ` • Puerto ${setup.smtpConfig.port}` : ''
+                              const isActive = setup.smtpConfig?.isActive || false
+                              
+                              return (
+                                <SelectItem 
+                                  key={setup.id} 
+                                  value={String(setup.id)}
+                                >
+                                  <div className="flex items-center gap-2 w-full">
+                                    {isActive && (
+                                      <span className="inline-block w-2 h-2 rounded-full bg-green-500 flex-shrink-0"></span>
+                                    )}
+                                    <div className="flex flex-col text-left flex-1 min-w-0">
+                                      <span className="font-medium text-sm text-gray-900">
+                                        {displayName}
+                                      </span>
+                                      {(emailText || portText) && (
+                                        <span className="text-xs text-gray-500 mt-0.5">
+                                          {emailText && `(${emailText})`}{portText}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </SelectItem>
+                              )
                             })
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona un dominio (opcional)" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {emailSetups && Array.isArray(emailSetups) && emailSetups.length > 0 ? (
-                              emailSetups.map((setup) => {
-                                const displayName = setup.name || setup.email || 'Sin nombre'
-                                const fromText = setup.from ? ` (${setup.from})` : ''
-                                return (
-                                  <SelectItem key={setup.id} value={String(setup.id)}>
-                                    {displayName}{fromText}
-                                  </SelectItem>
-                                )
-                              })
-                            ) : (
-                              <SelectItem value="no-domains" disabled>
-                                No hay dominios disponibles
-                              </SelectItem>
-                            )}
-                          </SelectContent>
-                        </Select>
-                      )}
-                      {formData.emailSetupId && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="mt-2"
-                          onClick={() => setFormData({ ...formData, emailSetupId: null })}
-                        >
-                          Limpiar selección
-                        </Button>
-                      )}
-                    </div>
-
-                    <div>
-                      <Label>Listas de Contactos</Label>
-                      {loadingLists ? (
-                        <Input disabled placeholder="Cargando listas..." />
-                      ) : (
-                        <div className="border rounded-md p-3 max-h-48 overflow-y-auto bg-background">
-                          {lists && Array.isArray(lists) && lists.length > 0 ? (
-                            lists
-                              .filter(list => list.status === 'active')
-                              .map((list) => (
-                                <div key={list.id} className="flex items-center space-x-2 py-1">
-                                  <input
-                                    type="checkbox"
-                                    id={`list-${list.id}`}
-                                    checked={formData.listIds.includes(list.id)}
-                                    onChange={(e) => {
-                                      if (e.target.checked) {
-                                        setFormData({
-                                          ...formData,
-                                          listIds: [...formData.listIds, list.id]
-                                        })
-                                      } else {
-                                        setFormData({
-                                          ...formData,
-                                          listIds: formData.listIds.filter(id => id !== list.id)
-                                        })
-                                      }
-                                    }}
-                                    className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                  />
-                                  <label
-                                    htmlFor={`list-${list.id}`}
-                                    className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                                  >
-                                    {list.name}
-                                  </label>
-                                </div>
-                              ))
-                          ) : (
-                            <p className="text-sm text-gray-500">No hay listas disponibles</p>
-                          )}
-                        </div>
-                      )}
-                      {formData.listIds.length > 0 && (
-                        <p className="text-xs text-gray-500 mt-2">
-                          {formData.listIds.length} {formData.listIds.length === 1 ? 'lista seleccionada' : 'listas seleccionadas'}
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label htmlFor="description">Descripción</Label>
-                    <Textarea
-                      id="description"
-                      value={formData.description}
-                      onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                      placeholder="Describe el propósito de esta campaña..."
-                      rows={4}
-                    />
-                  </div>
-
-                  <div className="flex gap-3 justify-end pt-2 border-t">
+                        ) : (
+                          <SelectItem value="no-domains" disabled>
+                            No hay dominios disponibles
+                          </SelectItem>
+                        )}
+                      </SelectContent>
+                    </Select>
+                  )}
+                  {formData.emailSetupId && (
                     <Button
                       type="button"
-                      variant="outline"
-                      onClick={handleCloseForm}
-                      disabled={isSaving}
+                      variant="ghost"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => setFormData({ ...formData, emailSetupId: null })}
                     >
-                      Cancelar
+                      Limpiar selección
                     </Button>
-                    <Button type="submit" disabled={isSaving}>
-                      {isSaving ? (
-                        <>
-                          <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Guardando...
-                        </>
+                  )}
+                </div>
+
+                <div>
+                  <Label>Listas de Contactos</Label>
+                  {loadingLists ? (
+                    <Input disabled placeholder="Cargando listas..." />
+                  ) : (
+                    <div className="border rounded-md p-3 max-h-48 overflow-y-auto overflow-x-hidden bg-background">
+                      {lists && Array.isArray(lists) && lists.length > 0 ? (
+                        lists
+                          .filter(list => list.status === 'active')
+                          .map((list) => (
+                            <div key={list.id} className="flex items-center space-x-2 py-1">
+                              <input
+                                type="checkbox"
+                                id={`list-${list.id}`}
+                                checked={formData.listIds.includes(list.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setFormData({
+                                      ...formData,
+                                      listIds: [...formData.listIds, list.id]
+                                    })
+                                  } else {
+                                    setFormData({
+                                      ...formData,
+                                      listIds: formData.listIds.filter(id => id !== list.id)
+                                    })
+                                  }
+                                }}
+                                className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                              />
+                              <label
+                                htmlFor={`list-${list.id}`}
+                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+                              >
+                                {list.name}
+                              </label>
+                            </div>
+                          ))
                       ) : (
-                        editingCampaign ? 'Actualizar Campaña' : 'Guardar Campaña'
+                        <p className="text-sm text-gray-500">No hay listas disponibles</p>
                       )}
-                    </Button>
-                  </div>
-                </form>
-              </CardContent>
-            </Card>
-          )}
+                    </div>
+                  )}
+                  {formData.listIds.length > 0 && (
+                    <p className="text-xs text-gray-500 mt-2">
+                      {formData.listIds.length} {formData.listIds.length === 1 ? 'lista seleccionada' : 'listas seleccionadas'}
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <Label htmlFor="description">Descripción</Label>
+                <Textarea
+                  id="description"
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Describe el propósito de esta campaña..."
+                  rows={4}
+                />
+              </div>
+            </form>
+          </Dialog>
 
           {/* Barra de búsqueda y filtros */}
           <Card>
@@ -687,81 +723,85 @@ export default function Campanas({ user }: CampanasProps) {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-4">
-                {filteredCampaigns.map((campaign) => (
-                  <Card key={campaign.id} className="hover:shadow-lg transition-all">
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="text-lg">{campaign.name}</CardTitle>
-                          <div className="flex items-center gap-2 mt-1">
-                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(campaign.status)}`}>
-                              {getStatusText(campaign.status)}
-                            </span>
-                            <span className="text-sm text-gray-500">
-                              {campaign.campaignStages?.length || 0} etapas
-                            </span>
+              <Card className="border">
+                <CardContent className="p-0">
+                  <div className="max-h-[600px] overflow-y-auto p-4 space-y-4">
+                    {filteredCampaigns.map((campaign) => (
+                      <Card key={campaign.id} className="hover:shadow-lg transition-all">
+                        <CardHeader>
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <CardTitle className="text-lg">{campaign.name}</CardTitle>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium border ${getStatusColor(campaign.status)}`}>
+                                  {getStatusText(campaign.status)}
+                                </span>
+                                <span className="text-sm text-gray-500">
+                                  {campaign.campaignStages?.length || 0} etapas
+                                </span>
+                              </div>
+                              {campaign.description && (
+                                <p className="text-sm text-gray-600 mt-2">{campaign.description}</p>
+                              )}
+                            </div>
+                            <div className="flex gap-1">
+                              {/* Botones de estado */}
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleStatusChange(campaign, 'active')}
+                                disabled={campaign.status === 'active'}
+                                className={campaign.status === 'active' ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'hover:text-green-600'}
+                                title="Activar campaña"
+                              >
+                                <Play className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleStatusChange(campaign, 'paused')}
+                                disabled={campaign.status === 'paused'}
+                                className={campaign.status === 'paused' ? 'text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50' : 'hover:text-yellow-600'}
+                                title="Pausar campaña"
+                              >
+                                <Square className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleStatusChange(campaign, 'completed')}
+                                disabled={campaign.status === 'completed'}
+                                className={campaign.status === 'completed' ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' : 'hover:text-blue-600'}
+                                title="Marcar como completada"
+                              >
+                                <Check className="h-4 w-4" />
+                              </Button>
+                              
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEdit(campaign)}
+                              >
+                                <Edit className="h-4 w-4 mr-1" />
+                                Editar
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleDeleteClick(campaign)}
+                                className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                              >
+                                <Trash2 className="h-4 w-4 mr-1" />
+                                Eliminar
+                              </Button>
+                            </div>
                           </div>
-                          {campaign.description && (
-                            <p className="text-sm text-gray-600 mt-2">{campaign.description}</p>
-                          )}
-                        </div>
-                        <div className="flex gap-1">
-                          {/* Botones de estado */}
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStatusChange(campaign, 'active')}
-                            disabled={campaign.status === 'active'}
-                            className={campaign.status === 'active' ? 'text-green-600 hover:text-green-700 hover:bg-green-50' : 'hover:text-green-600'}
-                            title="Activar campaña"
-                          >
-                            <Play className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStatusChange(campaign, 'paused')}
-                            disabled={campaign.status === 'paused'}
-                            className={campaign.status === 'paused' ? 'text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50' : 'hover:text-yellow-600'}
-                            title="Pausar campaña"
-                          >
-                            <Square className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleStatusChange(campaign, 'completed')}
-                            disabled={campaign.status === 'completed'}
-                            className={campaign.status === 'completed' ? 'text-blue-600 hover:text-blue-700 hover:bg-blue-50' : 'hover:text-blue-600'}
-                            title="Marcar como completada"
-                          >
-                            <Check className="h-4 w-4" />
-                          </Button>
-                          
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleEdit(campaign)}
-                          >
-                            <Edit className="h-4 w-4 mr-1" />
-                            Editar
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleDeleteClick(campaign)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                          >
-                            <Trash2 className="h-4 w-4 mr-1" />
-                            Eliminar
-                          </Button>
-            </div>
-          </div>
-                    </CardHeader>
-                  </Card>
-                ))}
-              </div>
+                        </CardHeader>
+                      </Card>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
             )}
           </div>
 

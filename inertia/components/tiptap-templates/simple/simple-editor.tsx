@@ -39,6 +39,7 @@ import { HeadingDropdownMenu } from "~/components/tiptap/tiptap-ui/heading-dropd
 import { ListDropdownMenu } from "~/components/tiptap/tiptap-ui/list-dropdown-menu"
 import { BlockquoteButton } from "~/components/tiptap/tiptap-ui/blockquote-button"
 import { CodeBlockButton } from "~/components/tiptap/tiptap-ui/code-block-button"
+import { ImageUploadButton } from "~/components/tiptap/tiptap-ui/image-upload-button"
 import {
   ColorHighlightPopover,
   ColorHighlightPopoverContent,
@@ -57,7 +58,6 @@ import { UndoRedoButton } from "~/components/tiptap/tiptap-ui/undo-redo-button"
 import { ArrowLeftIcon } from "~/components/tiptap/tiptap-icons/arrow-left-icon"
 import { HighlighterIcon } from "~/components/tiptap/tiptap-icons/highlighter-icon"
 import { LinkIcon } from "~/components/tiptap/tiptap-icons/link-icon"
-import { ImagePlusIcon } from "~/components/tiptap/tiptap-icons/image-plus-icon"
 
 // --- Hooks ---
 import { useIsMobile } from "~/hooks/use-mobile"
@@ -65,9 +65,9 @@ import { useWindowSize } from "~/hooks/use-window-size"
 import { useCursorVisibility } from "~/hooks/use-cursor-visibility"
 
 // --- Lib ---
-import { ImagePreview } from "~/components/tiptap/tiptap-node/image-preview-node/image-preview-extension"
+import { ImageUploadNode } from "~/components/tiptap/tiptap-node/image-upload-node/image-upload-node-extension"
 import { AttachmentNode } from "~/components/tiptap/tiptap-node/attachment-node/attachment-node-extension"
-import { handleImageUploadAndInsert } from "~/lib/tiptap-utils"
+import { handleImageUpload, MAX_FILE_SIZE } from "~/lib/tiptap-utils"
 
 // --- Styles ---
 import "./simple-editor.scss"
@@ -82,12 +82,10 @@ interface SimpleEditorProps {
 const MainToolbarContent = ({
   onHighlighterClick,
   onLinkClick,
-  onUploadClick,
   isMobile,
 }: {
   onHighlighterClick: () => void
   onLinkClick: () => void
-  onUploadClick: () => void
   isMobile: boolean
 }) => {
   return (
@@ -146,22 +144,7 @@ const MainToolbarContent = ({
       <ToolbarSeparator />
 
       <ToolbarGroup>
-        <Button
-          type="button"
-          data-style="ghost"
-          role="button"
-          tabIndex={-1}
-          aria-label="add files"
-          tooltip="add files"
-          onClick={(e) => {
-            e.preventDefault()
-            e.stopPropagation()
-            onUploadClick()
-          }}
-        >
-          <ImagePlusIcon className="tiptap-button-icon" />
-          <span className="tiptap-button-text">Add</span>
-        </Button>
+        <ImageUploadButton text="Add" />  
       </ToolbarGroup>
 
       <Spacer />
@@ -205,7 +188,6 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
     "main" | "highlighter" | "link"
   >("main")
   const toolbarRef = React.useRef<HTMLDivElement>(null)
-  const fileInputRef = React.useRef<HTMLInputElement>(null)
 
   const editor = useEditor({
     immediatelyRender: false,
@@ -233,7 +215,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       TaskItem.configure({ nested: true }),
       Highlight.configure({ multicolor: true }),
       Image.configure({
-        inline: false,
+        inline: true,
         allowBase64: true,
         HTMLAttributes: {
           class: 'loaded',
@@ -243,7 +225,13 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       Superscript,
       Subscript,
       Selection,
-      ImagePreview,
+      ImageUploadNode.configure({
+        accept: "image/*,application/pdf,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel",
+        maxSize: MAX_FILE_SIZE,
+        limit: 10,
+        upload: handleImageUpload,
+        onError: (error) => console.error("Upload failed:", error),
+      }),
       AttachmentNode,
     ],
     content: initialContent || "",
@@ -287,13 +275,6 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
             <MainToolbarContent
               onHighlighterClick={() => setMobileView("highlighter")}
               onLinkClick={() => setMobileView("link")}
-              onUploadClick={() => {
-                const input = fileInputRef.current
-                if (input) {
-                  input.value = ""
-                  input.click()
-                }
-              }}
               isMobile={isMobile}
             />
           ) : (
@@ -308,24 +289,6 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
           editor={editor}
           role="presentation"
           className="simple-editor-content"
-        />
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*,application/pdf,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-          multiple
-          style={{ display: "none" }}
-          onChange={async (e) => {
-            const files = e.target.files
-            if (!files || !editor) return
-            
-            // Subir archivos al servidor y luego insertarlos con URLs del servidor
-            try {
-              await handleImageUploadAndInsert(Array.from(files), editor)
-            } catch (error) {
-              console.error('Error al subir e insertar archivos:', error)
-            }
-          }}
         />
       </EditorContext.Provider>
     </div>

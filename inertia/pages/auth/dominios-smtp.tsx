@@ -1,6 +1,6 @@
 import { Head } from '@inertiajs/react'
 import AppSidebar from '~/components/AppSidebar'
-import { Globe, Mail, Send, Settings, TestTube } from 'lucide-react'
+import { Globe, Mail, Send, Settings, TestTube, Edit, RefreshCw, Plus, Trash2 } from 'lucide-react'
 import { useState, useEffect } from 'react'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
@@ -9,6 +9,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '~/components/ui/tabs'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import { Dialog } from '~/components/ui/dialog'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { validateEmail } from '~/lib/validations'
@@ -26,33 +27,45 @@ interface DominiosSMTPProps {
 export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   const { toasts, showSuccess, showError, showWarning, removeToast } = useToast()
   const [isLoading, setIsLoading] = useState(false)
-  const [isSavingConfig, setIsSavingConfig] = useState(false)
-  
-  // Estados para configuración SMTP
-  const [smtpConfig, setSmtpConfig] = useState({
-    host: '',
-    port: '587',
-    username: '',
-    password: '',
-    fromEmail: '',
-    encryption: 'tls',
-    provider: ''
-  })
 
   // Estados para configuraciones existentes
   const [existingConfigs, setExistingConfigs] = useState<any[]>([])
   const [isLoadingConfigs, setIsLoadingConfigs] = useState(false)
-  const [isEditingExisting, setIsEditingExisting] = useState(false)
-  const [originalConfig, setOriginalConfig] = useState<any>(null)
   
   // Estados para eliminación
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
   const [configToDelete, setConfigToDelete] = useState<any>(null)
   const [isDeleting, setIsDeleting] = useState(false)
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   
   // Estados para activación
   const [isActivating, setIsActivating] = useState(false)
+
+  // Estados para modal de edición
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [configToEdit, setConfigToEdit] = useState<any>(null)
+  const [isUpdating, setIsUpdating] = useState(false)
+  const [editFormData, setEditFormData] = useState({
+    name: '',
+    host: '',
+    port: '587',
+    username: '',
+    password: '',
+    fromEmail: '',
+    encryption: 'tls'
+  })
+
+  // Estados para modal de creación
+  const [showCreateModal, setShowCreateModal] = useState(false)
+  const [isCreating, setIsCreating] = useState(false)
+  const [createFormData, setCreateFormData] = useState({
+    name: '',
+    host: '',
+    port: '587',
+    username: '',
+    password: '',
+    fromEmail: '',
+    encryption: 'tls'
+  })
 
   // Estados para envío de correo
   const [emailData, setEmailData] = useState({
@@ -112,100 +125,10 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   }
 
 
-  const handleSmtpConfigChange = (field: string, value: string) => {
-    setSmtpConfig(prev => ({
-      ...prev,
-      [field]: value
-    }))
-    
-    // Si estamos editando una configuración existente y se modifica un campo,
-    // cambiar el provider a 'custom' para indicar que es una nueva configuración
-    if (isEditingExisting && originalConfig) {
-      const hasChanged = (
-        (field === 'host' && value !== originalConfig.host) ||
-        (field === 'port' && value !== originalConfig.port) ||
-        (field === 'username' && value !== originalConfig.user) ||
-        (field === 'fromEmail' && value !== originalConfig.fromEmail) ||
-        (field === 'encryption' && value !== originalConfig.protocole)
-      )
-      
-      if (hasChanged) {
-        setSmtpConfig(prev => ({
-          ...prev,
-          provider: 'custom' // Cambiar a configuración personalizada
-        }))
-        setIsEditingExisting(false) // Ya no estamos editando la configuración original
-      }
-    }
-  }
-
-  const handleProviderChange = (provider: string) => {
-    // Si es una configuración existente (formato: "existing_${id}")
-    if (provider.startsWith('existing_')) {
-      const configId = provider.replace('existing_', '')
-      const existingConfig = existingConfigs.find(config => config.id.toString() === configId)
-      
-      if (existingConfig) {
-        // Guardar la configuración original para comparar cambios
-        setOriginalConfig(existingConfig)
-        setIsEditingExisting(true)
-        
-        setSmtpConfig(prev => ({
-          ...prev,
-          provider: provider,
-          host: existingConfig.host || '',
-          port: existingConfig.port || '587',
-          username: existingConfig.user || '',
-          password: '', // Limpiar contraseña para que el usuario la ingrese
-          fromEmail: existingConfig.fromEmail || '',
-          encryption: existingConfig.protocole || 'tls'
-        }))
-      }
-    } else {
-      // Configuraciones predefinidas
-      const providerConfigs = {
-        'gmail': {
-          host: 'smtp.gmail.com',
-          port: '587',
-          encryption: 'tls'
-        },
-        'outlook': {
-          host: 'smtp-mail.outlook.com',
-          port: '587',
-          encryption: 'tls'
-        },
-        'yahoo': {
-          host: 'smtp.mail.yahoo.com',
-          port: '587',
-          encryption: 'tls'
-        },
-        'custom': {
-          host: '',
-          port: '587',
-          encryption: 'tls'
-        }
-      }
-
-      const config = providerConfigs[provider as keyof typeof providerConfigs]
-      if (config) {
-        // Resetear estado de edición para nueva configuración
-        setIsEditingExisting(false)
-        setOriginalConfig(null)
-        
-        setSmtpConfig(prev => ({
-          ...prev,
-          provider: provider,
-          host: config.host,
-          port: config.port,
-          encryption: config.encryption,
-          username: '', // Limpiar usuario para nueva configuración
-          password: '', // Limpiar contraseña para nueva configuración
-          fromEmail: '' // Limpiar email remitente para nueva configuración
-        }))
-      }
-    }
-    // Cerrar el dropdown después de seleccionar
-    setIsDropdownOpen(false)
+  // Función para seleccionar una configuración existente (solo para mostrar detalles)
+  const handleSelectConfig = (_config: any) => {
+    // Esta función ahora solo se usa para mostrar detalles, no para editar
+    // La edición se hace a través del modal
   }
 
   const handleEmailDataChange = (field: string, value: string) => {
@@ -219,9 +142,6 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
   const handleDeleteConfig = (config: any) => {
     setConfigToDelete(config)
     setShowDeleteDialog(true)
-    // Cerrar el dropdown cuando se abre el diálogo
-    setIsDropdownOpen(false)
-    setSmtpConfig(prev => ({ ...prev, provider: '' }))
   }
 
   // Función para confirmar eliminación
@@ -299,39 +219,82 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
     }
   }
 
-  const handleSaveSmtpConfig = async () => {
-    if (!smtpConfig.host || !smtpConfig.username) {
+  // Función para abrir el modal de edición
+  const handleOpenEditModal = (config: any) => {
+    setConfigToEdit(config)
+    setEditFormData({
+      name: config.name || '',
+      host: config.host || '',
+      port: config.port || '587',
+      username: config.user || '',
+      password: '', // No prellenar la contraseña por seguridad
+      fromEmail: config.fromEmail || '',
+      encryption: config.protocole || 'tls'
+    })
+    setShowEditModal(true)
+  }
+
+  // Función para cerrar el modal de edición
+  const handleCloseEditModal = () => {
+    setShowEditModal(false)
+    setConfigToEdit(null)
+    setEditFormData({
+      name: '',
+      host: '',
+      port: '587',
+      username: '',
+      password: '',
+      fromEmail: '',
+      encryption: 'tls'
+    })
+  }
+
+  // Función para actualizar el formulario de edición
+  const handleEditFormChange = (field: string, value: string) => {
+    setEditFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  // Función para actualizar el formulario de creación
+  const handleCreateFormChange = (field: string, value: string) => {
+    setCreateFormData(prev => ({
+      ...prev,
+      [field]: value
+    }))
+  }
+
+  // Función para cerrar el modal de creación
+  const handleCloseCreateModal = () => {
+    setShowCreateModal(false)
+    setCreateFormData({
+      name: '',
+      host: '',
+      port: '587',
+      username: '',
+      password: '',
+      fromEmail: '',
+      encryption: 'tls'
+    })
+  }
+
+  // Función para guardar nueva configuración
+  const handleCreateConfig = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!createFormData.host || !createFormData.username || !createFormData.password) {
       showError(" Campos Requeridos", "Por favor completa el servidor SMTP, usuario y contraseña")
       return
     }
 
     // Validación de formato de email remitente
-    if (smtpConfig.fromEmail && !validateEmail(smtpConfig.fromEmail).isValid) {
+    if (createFormData.fromEmail && !validateEmail(createFormData.fromEmail).isValid) {
       showError('Correo inválido', 'El correo tiene un mal formato')
       return
     }
 
-    // Si estamos editando una configuración existente, requerir contraseña
-    if (isEditingExisting && !smtpConfig.password) {
-      showError(" Contraseña Requerida", "Por favor ingresa la contraseña para crear una nueva configuración")
-      return
-    }
-
-    // Preparar datos para envío
-    const configToSend: any = { ...smtpConfig }
-
-
-
-
-    
-    // Si estamos editando una configuración existente, siempre crear una nueva
-    // Esto se detecta cuando el provider cambió a 'custom' después de modificar campos
-    if (smtpConfig.provider === 'custom' && originalConfig) {
-      // Limpiar el provider para que se trate como nueva configuración
-      delete configToSend.provider
-    }
-
-    setIsSavingConfig(true)
+    setIsCreating(true)
     try {
       const response = await fetch('/smtp-config', {
         method: 'POST',
@@ -340,7 +303,14 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
           'X-CSRF-TOKEN': getCsrfToken(),
           'Accept': 'application/json'
         },
-        body: JSON.stringify(configToSend)
+        body: JSON.stringify({
+          host: createFormData.host,
+          port: createFormData.port,
+          username: createFormData.username,
+          password: createFormData.password,
+          fromEmail: createFormData.fromEmail,
+          name: createFormData.name
+        })
       })
 
       const result = await response.json()
@@ -349,18 +319,11 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
         if (result.isDuplicate) {
           showWarning(" Configuración Existente", result.message || "Ya tienes esta configuración SMTP guardada", 4000)
         } else {
-          // Determinar el mensaje según si se creó una nueva configuración o se actualizó
-          const message = (smtpConfig.provider === 'custom' && originalConfig) 
-            ? "Nueva configuración SMTP creada basada en la configuración existente"
-            : "Tu servidor SMTP se ha configurado correctamente y está listo para enviar correos"
-          
-          showSuccess(" Configuración Guardada", message, 5000)
+          showSuccess(" Configuración Creada", "Tu servidor SMTP se ha configurado correctamente y está listo para enviar correos", 5000)
           // Recargar configuraciones después de guardar
           loadExistingConfigs()
-          
-          // Resetear estados después de guardar
-          setIsEditingExisting(false)
-          setOriginalConfig(null)
+          // Cerrar el modal
+          handleCloseCreateModal()
         }
       } else {
         showError(" Error al Guardar", result.message || "No se pudo guardar la configuración SMTP")
@@ -369,9 +332,71 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
       console.error('Error al guardar configuración:', error)
       showError("🔌 Error de Conexión", "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.")
     } finally {
-      setIsSavingConfig(false)
+      setIsCreating(false)
     }
   }
+
+  // Función para guardar los cambios de edición
+  const handleUpdateConfig = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!configToEdit) return
+
+    if (!editFormData.host || !editFormData.username) {
+      showError(" Campos Requeridos", "Por favor completa el servidor SMTP y usuario")
+      return
+    }
+
+    // Validar que se proporcione la contraseña
+    if (!editFormData.password || editFormData.password.trim() === '') {
+      showError(" Contraseña Requerida", "Por favor ingresa la contraseña para verificar la actualización")
+      return
+    }
+
+    // Validación de formato de email remitente
+    if (editFormData.fromEmail && !validateEmail(editFormData.fromEmail).isValid) {
+      showError('Correo inválido', 'El correo tiene un mal formato')
+      return
+    }
+
+    setIsUpdating(true)
+    try {
+      const response = await fetch(`/smtp-config/${configToEdit.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          id: configToEdit.id, // Incluir el ID en el body para mayor seguridad
+          host: editFormData.host,
+          port: editFormData.port,
+          username: editFormData.username,
+          password: editFormData.password, // Contraseña requerida para validar
+          fromEmail: editFormData.fromEmail,
+          name: editFormData.name
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess(" Configuración Actualizada", "La configuración SMTP se ha actualizado correctamente", 4000)
+        // Recargar configuraciones después de actualizar
+        loadExistingConfigs()
+        // Cerrar el modal
+        handleCloseEditModal()
+      } else {
+        showError(" Error al Actualizar", result.message || "No se pudo actualizar la configuración SMTP")
+      }
+    } catch (error) {
+      console.error('Error al actualizar configuración:', error)
+      showError("🔌 Error de Conexión", "No se pudo conectar con el servidor. Verifica tu conexión e inténtalo de nuevo.")
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
 
   const handleSendTestEmail = async () => {
     if (!emailData.to || !emailData.subject || !emailData.message) {
@@ -448,168 +473,124 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
-                      <Label htmlFor="provider">
-                        Configuraciones {existingConfigs.length > 0 && `(${existingConfigs.length})`}
-                      </Label>
-                      <Select 
-                        value={smtpConfig.provider} 
-                        onValueChange={handleProviderChange} 
-                        disabled={isLoadingConfigs}
-                        open={isDropdownOpen}
-                        onOpenChange={setIsDropdownOpen}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder={isLoadingConfigs ? "Cargando configuraciones..." : "Selecciona tu configuracion de servidor"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {/* Configuraciones existentes */}
+                      <div className="flex items-center justify-between">
+                        <Label>
+                          Configuraciones {existingConfigs.length > 0 && `(${existingConfigs.length})`}
+                        </Label>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setCreateFormData({
+                              name: '',
+                              host: '',
+                              port: '587',
+                              username: '',
+                              password: '',
+                              fromEmail: '',
+                              encryption: 'tls'
+                            })
+                            setShowCreateModal(true)
+                          }}
+                          className="flex items-center gap-2"
+                        >
+                          <Plus className="h-4 w-4" />
+                          Nueva Configuración
+                        </Button>
+                      </div>
+                      
+                      {isLoadingConfigs ? (
+                        <div className="text-center py-8 text-gray-500">Cargando configuraciones...</div>
+                      ) : existingConfigs.length === 0 ? (
+                        <Card className="border-2 border-dashed">
+                          <CardContent className="py-12 text-center">
+                            <Settings className="h-16 w-16 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500 font-medium">No hay configuraciones guardadas aún</p>
+                          </CardContent>
+                        </Card>
+                      ) : (
+                        <div className="max-h-[600px] overflow-y-auto pr-2 space-y-4 border border-gray-200 rounded-lg p-4 custom-scrollbar">
                           {existingConfigs.map((config, index) => (
-                            <div key={`existing_${config.id}`} className="relative">
-                              <SelectItem value={`existing_${config.id}`}>
-                                <div className="flex flex-col text-left w-full">
-                                  <div className="flex justify-between items-center">
-                                    <span className="font-medium text-left">{config.host}</span>
-                                    {config.isActive && (
-                                      <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                                        Activa
+                            <Card 
+                              key={config.id} 
+                              className="hover:shadow-lg transition-all cursor-pointer"
+                              onClick={() => handleSelectConfig(config)}
+                            >
+                              <CardHeader>
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-2">
+                                      {/* Botón de activación (checkmark verde) */}
+                                      <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        onClick={(e) => {
+                                          e.stopPropagation()
+                                          handleActivateConfig(config)
+                                        }}
+                                        disabled={isActivating}
+                                        className={`p-1 rounded-md transition-colors flex items-center justify-center ${
+                                          config.isActive 
+                                            ? 'bg-green-500 hover:bg-green-600 text-white' 
+                                            : 'bg-gray-200 hover:bg-green-500 hover:text-white text-gray-500'
+                                        }`}
+                                        title={config.isActive ? "Configuración activa" : "Activar configuración"}
+                                      >
+                                        {isActivating ? (
+                                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
+                                        ) : (
+                                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                          </svg>
+                                        )}
+                                      </Button>
+                                      <CardTitle className="text-lg">
+                                        {config.name || `config-${existingConfigs.length - index}`}
+                                      </CardTitle>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2 mt-2">
+                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                                        {config.host}
                                       </span>
-                                    )}
+                                      <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                                        Puerto: {config.port}
+                                      </span>
+                                      {config.isActive && (
+                                        <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                          Activa
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-sm text-gray-500 mt-2">
+                                      {config.user} • #{existingConfigs.length - index} • {formatDateTime(config.createdAt)}
+                                    </p>
                                   </div>
-                                  <span className="text-xs text-gray-500 text-left">
-                                    {config.user} • Puerto {config.port} • #{existingConfigs.length - index} • {formatDateTime(config.createdAt)}
-                                  </span>
+                                  <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleOpenEditModal(config)}
+                                      title="Editar configuración"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
+                                      onClick={() => handleDeleteConfig(config)}
+                                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                      title="Eliminar configuración"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
-                              </SelectItem>
-                              
-                              {/* Botón de activación (checkmark verde) */}
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleActivateConfig(config)
-                                }}
-                                disabled={isActivating}
-                                className={`absolute left-2 top-1/2 transform -translate-y-1/2 p-1 rounded-md transition-colors flex items-center justify-center z-10 ${
-                                  config.isActive 
-                                    ? 'bg-green-500 hover:bg-green-600 text-white cursor-pointer' 
-                                    : 'bg-gray-200 hover:bg-green-500 hover:text-white text-gray-500 cursor-pointer'
-                                }`}
-                                title={config.isActive ? "Configuración activa" : "Activar configuración"}
-                                type="button"
-                              >
-                                {isActivating ? (
-                                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div>
-                                ) : (
-                                  <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                  </svg>
-                                )}
-                              </button>
-                              
-                              {/* Botón de eliminación */}
-                              <button
-                                onClick={(e) => {
-                                  e.preventDefault()
-                                  e.stopPropagation()
-                                  handleDeleteConfig(config)
-                                }}
-                                className="absolute right-2 top-1/2 transform -translate-y-1/2 bg-red-500 hover:bg-red-600 text-white p-1 rounded-md transition-colors flex items-center justify-center z-10"
-                                title="Eliminar configuración"
-                                type="button"
-                              >
-                                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
-                                  <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                                </svg>
-                              </button>
-                            </div>
+                              </CardHeader>
+                            </Card>
                           ))}
-                          
-                          {/* Separador si hay configuraciones existentes */}
-                          {existingConfigs.length > 0 && (
-                            <div className="border-t border-gray-200 my-1"></div>
-                          )}
-                          <SelectItem value="custom">Configuración Personalizada</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="host">Servidor SMTP</Label>
-                        <Input
-                          id="host"
-                          placeholder="smtp.gmail.com"
-                          value={smtpConfig.host}
-                          onChange={(e) => handleSmtpConfigChange('host', e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="port">Puerto</Label>
-                        <Select value={smtpConfig.port} onValueChange={(value: string) => handleSmtpConfigChange('port', value)}>
-                          <SelectTrigger>
-                            <SelectValue placeholder="Selecciona el puerto" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="587">587 - TLS (Recomendado)</SelectItem>
-                            <SelectItem value="465">465 - SSL</SelectItem>
-                            <SelectItem value="25">25 - Sin cifrado</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="username">Usuario</Label>
-                        <Input
-                          id="username"
-                          placeholder="tu-email@gmail.com"
-                          value={smtpConfig.username}
-                          onChange={(e) => handleSmtpConfigChange('username', e.target.value)}
-                        />
-                      </div>
-                      
-                      <div className="space-y-2">
-                        <Label htmlFor="password">Contraseña</Label>
-                        <Input
-                          id="password"
-                          type="password"
-                          placeholder={isEditingExisting ? "Ingresa la contraseña para crear nueva configuración" : "Tu contraseña"}
-                          value={smtpConfig.password}
-                          onChange={(e) => handleSmtpConfigChange('password', e.target.value)}
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="fromEmail">Email Remitente</Label>
-                      <Input
-                        id="fromEmail"
-                        placeholder="noreply@tudominio.com"
-                        value={smtpConfig.fromEmail}
-                        onChange={(e) => handleSmtpConfigChange('fromEmail', e.target.value)}
-                      />
-                    </div>
-
-                    <div className="flex justify-end">
-                      <Button 
-                        onClick={handleSaveSmtpConfig}
-                        disabled={isSavingConfig}
-                        className="bg-orange-500 hover:bg-orange-600"
-                      >
-                        {isSavingConfig ? (
-                          <>
-                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                            Guardando...
-                          </>
-                        ) : (
-                          <>
-                            <Settings className="h-4 w-4 mr-2" />
-                            Guardar Configuración
-                          </>
-                        )}
-                      </Button>
+                        </div>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -733,6 +714,312 @@ export default function DominiosSMTP({ user }: DominiosSMTPProps) {
           </div>
         </div>
       )}
+
+      {/* Modal de edición de configuración SMTP */}
+      <Dialog
+        open={showEditModal}
+        onOpenChange={(open) => {
+          if (!open && !isUpdating) {
+            handleCloseEditModal()
+          } else {
+            setShowEditModal(open)
+          }
+        }}
+        title="Editar Configuración SMTP"
+        maxWidth="2xl"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                handleCloseEditModal()
+              }}
+              disabled={isUpdating}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                // Obtener el formulario y hacer submit
+                const form = document.getElementById('smtp-config-edit-form') as HTMLFormElement
+                if (form) {
+                  form.requestSubmit()
+                } else {
+                  // Si no encuentra el formulario, llamar directamente a la función
+                  handleUpdateConfig(e as any)
+                }
+              }}
+              disabled={isUpdating}
+            >
+              {isUpdating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                'Actualizar Configuración'
+              )}
+            </Button>
+          </>
+        }
+      >
+        <form id="smtp-config-edit-form" onSubmit={handleUpdateConfig} className="space-y-4">
+          {/* Información de la configuración que se está editando */}
+          {configToEdit && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+              <div className="flex items-center gap-2 mb-2">
+                <Settings className="h-4 w-4 text-blue-600" />
+                <span className="text-sm font-semibold text-blue-900">Editando Configuración:</span>
+              </div>
+              <div className="text-sm text-blue-800 space-y-1">
+                <p><strong>ID:</strong> {configToEdit.id}</p>
+                <p><strong>Nombre:</strong> {configToEdit.name || `config-${configToEdit.id}`}</p>
+                <p><strong>Host:</strong> {configToEdit.host}</p>
+                <p><strong>Usuario:</strong> {configToEdit.user}</p>
+                <p><strong>Puerto:</strong> {configToEdit.port}</p>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="edit-name">Nombre del Dominio</Label>
+              <Input
+                id="edit-name"
+                type="text"
+                placeholder="Ej: Gmail Personal, Outlook Empresa, etc."
+                value={editFormData.name}
+                onChange={(e) => handleEditFormChange('name', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit-port">Puerto</Label>
+              <Select 
+                value={editFormData.port} 
+                onValueChange={(value: string) => {
+                  handleEditFormChange('port', value)
+                  // Actualizar el protocolo según el puerto
+                  const protocolMap: Record<string, string> = {
+                    '587': 'tls',
+                    '465': 'ssl',
+                    '25': 'insecure'
+                  }
+                  handleEditFormChange('encryption', protocolMap[value] || 'tls')
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona el puerto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="587">587 - TLS (Recomendado)</SelectItem>
+                  <SelectItem value="465">465 - SSL</SelectItem>
+                  <SelectItem value="25">25 - Sin cifrado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="edit-host">Servidor SMTP *</Label>
+              <Input
+                id="edit-host"
+                type="text"
+                placeholder="smtp.gmail.com"
+                value={editFormData.host}
+                onChange={(e) => handleEditFormChange('host', e.target.value)}
+                required
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="edit-username">Usuario *</Label>
+              <Input
+                id="edit-username"
+                type="text"
+                placeholder="tu-email@gmail.com"
+                value={editFormData.username}
+                onChange={(e) => handleEditFormChange('username', e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="edit-password">Contraseña *</Label>
+            <Input
+              id="edit-password"
+              type="password"
+              placeholder="Ingresa la contraseña actual para verificar"
+              value={editFormData.password}
+              onChange={(e) => handleEditFormChange('password', e.target.value)}
+              required
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              La contraseña es requerida para verificar que eres el propietario de esta configuración
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="edit-fromEmail">Email Remitente</Label>
+            <Input
+              id="edit-fromEmail"
+              type="email"
+              placeholder="noreply@tudominio.com"
+              value={editFormData.fromEmail}
+              onChange={(e) => handleEditFormChange('fromEmail', e.target.value)}
+            />
+          </div>
+        </form>
+      </Dialog>
+
+      {/* Modal de creación de configuración SMTP */}
+      <Dialog
+        open={showCreateModal}
+        onOpenChange={(open) => {
+          if (!open && !isCreating) {
+            handleCloseCreateModal()
+          } else {
+            setShowCreateModal(open)
+          }
+        }}
+        title="Nueva Configuración SMTP"
+        maxWidth="2xl"
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={handleCloseCreateModal}
+              disabled={isCreating}
+            >
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                // Obtener el formulario y hacer submit
+                const form = document.getElementById('smtp-config-create-form') as HTMLFormElement
+                if (form) {
+                  form.requestSubmit()
+                } else {
+                  // Si no encuentra el formulario, llamar directamente a la función
+                  handleCreateConfig(e as any)
+                }
+              }}
+              disabled={isCreating}
+            >
+              {isCreating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Guardando...
+                </>
+              ) : (
+                'Crear Configuración'
+              )}
+            </Button>
+          </>
+        }
+      >
+        <form id="smtp-config-create-form" onSubmit={handleCreateConfig} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="create-name">Nombre del Dominio</Label>
+              <Input
+                id="create-name"
+                type="text"
+                placeholder="Ej: Gmail Personal, Outlook Empresa, etc."
+                value={createFormData.name}
+                onChange={(e) => handleCreateFormChange('name', e.target.value)}
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="create-port">Puerto</Label>
+              <Select 
+                value={createFormData.port} 
+                onValueChange={(value: string) => {
+                  handleCreateFormChange('port', value)
+                  // Actualizar el protocolo según el puerto
+                  const protocolMap: Record<string, string> = {
+                    '587': 'tls',
+                    '465': 'ssl',
+                    '25': 'insecure'
+                  }
+                  handleCreateFormChange('encryption', protocolMap[value] || 'tls')
+                }}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Selecciona el puerto" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="587">587 - TLS (Recomendado)</SelectItem>
+                  <SelectItem value="465">465 - SSL</SelectItem>
+                  <SelectItem value="25">25 - Sin cifrado</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="create-host">Servidor SMTP *</Label>
+              <Input
+                id="create-host"
+                type="text"
+                placeholder="smtp.gmail.com"
+                value={createFormData.host}
+                onChange={(e) => handleCreateFormChange('host', e.target.value)}
+                required
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="create-username">Usuario *</Label>
+              <Input
+                id="create-username"
+                type="text"
+                placeholder="tu-email@gmail.com"
+                value={createFormData.username}
+                onChange={(e) => handleCreateFormChange('username', e.target.value)}
+                required
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="create-password">Contraseña *</Label>
+            <Input
+              id="create-password"
+              type="password"
+              placeholder="Tu contraseña"
+              value={createFormData.password}
+              onChange={(e) => handleCreateFormChange('password', e.target.value)}
+              required
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="create-fromEmail">Email Remitente</Label>
+            <Input
+              id="create-fromEmail"
+              type="email"
+              placeholder="noreply@tudominio.com"
+              value={createFormData.fromEmail}
+              onChange={(e) => handleCreateFormChange('fromEmail', e.target.value)}
+            />
+          </div>
+        </form>
+      </Dialog>
     </>
   )
 }

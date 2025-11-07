@@ -10,6 +10,9 @@ export default class SmtpConfig extends BaseModel {
   declare emailSetupId: number
 
   @column()
+  declare name: string | null
+
+  @column()
   declare user: string
 
   @column()

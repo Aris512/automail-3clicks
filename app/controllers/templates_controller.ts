@@ -257,7 +257,6 @@ export default class TemplatesController {
 
           if (!existingRelation) {
             await TemplateAttachment.create({
-              tenantId: tenantId,
               templateId: templateId,
               attachmentId: attachment.id
             })
@@ -299,7 +298,6 @@ export default class TemplatesController {
       // Obtener las relaciones existentes antes de eliminar
       const existingRelations = await TemplateAttachment.query()
         .where('templateId', templateId)
-        .where('tenantId', tenantId)
         .preload('attachment')
       
       console.log(`📋 [REPLACE ATTACHMENTS] Relaciones existentes encontradas: ${existingRelations.length}`)
@@ -318,7 +316,6 @@ export default class TemplatesController {
       // Eliminar todas las relaciones existentes para esta plantilla
       const deletedCount = await TemplateAttachment.query()
         .where('templateId', templateId)
-        .where('tenantId', tenantId)
         .delete()
       
       console.log(`🗑️ [REPLACE ATTACHMENTS] Eliminadas ${deletedCount} relaciones antiguas`)
@@ -379,7 +376,6 @@ export default class TemplatesController {
               // Verificar si este attachment aún tiene relaciones con otras plantillas
               const otherRelations = await TemplateAttachment.query()
                 .where('attachmentId', orphanId)
-                .where('tenantId', tenantId)
                 .first()
               
               if (!otherRelations) {

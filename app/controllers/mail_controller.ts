@@ -2,6 +2,7 @@ import type { HttpContext } from '@adonisjs/core/http'
 import SmtpConfig from '#models/smtp_config'
 import nodemailer from 'nodemailer'
 import edge from 'edge.js'
+import HtmlEmailProcessor from '../services/htmlEmailProcessor.js'
 
 export default class MailController {
   async send({ request, response, auth }: HttpContext) {
@@ -73,12 +74,15 @@ export default class MailController {
         messaje: message 
       })
 
+      // Procesar el HTML para convertir imágenes a base64 si es necesario
+      const processedHtml = await HtmlEmailProcessor.processHtmlForEmail(htmlContent)
+
       // Enviar el correo
       const info = await transporter.sendMail({
         from: emailSetup.from || smtpConfig.user,
         to: to,
         subject: subject,
-        html: htmlContent,
+        html: processedHtml,
       })
 
       console.log('Correo enviado:', info.messageId)

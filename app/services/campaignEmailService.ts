@@ -9,6 +9,7 @@ import Subscriber from '#models/subscriber'
 import SubscriberList from '#models/subscriber_list'
 import Sending from '#models/sending'
 import TemplateRenderService from './templatesRenderService.js'
+import HtmlEmailProcessor from './htmlEmailProcessor.js'
 
 export default class CampaignEmailService {
   private renderService: TemplateRenderService
@@ -80,6 +81,7 @@ export default class CampaignEmailService {
       // Cargar la campaña con sus relaciones
       const campaign = await Campaign.query()
         .where('id', campaignId)
+        .preload('tenant')
         .preload('emailSetup', (query) => {
           query.preload('smtpConfig')
         })
@@ -149,17 +151,23 @@ export default class CampaignEmailService {
 
       // Procesar cada etapa
       for (const stage of stages) {
-        // Validar que la etapa tenga startsAt configurado y que ya haya llegado la hora
-        if (stage.startsAt) {
-          const now = DateTime.now()
-          const startTime = stage.startsAt
+        // Validar que la etapa tenga startsAt configurado
+        if (!stage.startsAt) {
+          console.log(
+            `La etapa ${stage.id} (${stage.name}) no tiene hora de inicio (startsAt) configurada, omitiendo`
+          )
+          continue
+        }
 
-          if (startTime > now) {
-            console.log(
-              `La etapa ${stage.id} (${stage.name}) esta programada para ${startTime.toISO()}, aun no es momento de enviar`
-            )
-            continue
-          }
+        // Validar que ya haya llegado la hora de inicio
+        const now = DateTime.now()
+        const startTime = stage.startsAt
+
+        if (startTime > now) {
+          console.log(
+            `La etapa ${stage.id} (${stage.name}) esta programada para ${startTime.toISO()}, aun no es momento de enviar (ahora: ${now.toISO()})`
+          )
+          continue
         }
 
         // NUEVA VERIFICACIÓN: Verificar si la etapa ya fue completamente procesada
@@ -288,16 +296,19 @@ export default class CampaignEmailService {
               // Renderizar la plantilla con los datos del suscriptor
               const rendered = await this.renderService.render(template, subscriber)
 
+              // Procesar el HTML para convertir imágenes a base64 si es necesario
+              const processedHtml = await HtmlEmailProcessor.processHtmlForEmail(rendered.body)
+
               // Preparar el remitente
               const fromAddress = emailSetup.from || emailSetup.email
-              const fromName = emailSetup.name || 'Sistema'
+              const fromName = campaign.tenant?.name || emailSetup.name || 'Sistema'
 
               // Enviar el correo
               const info = await transporter.sendMail({
                 from: `"${fromName}" <${fromAddress}>`,
                 to: subscriber.email,
                 subject: rendered.subject,
-                html: rendered.body,
+                html: processedHtml,
               })
 
               // Registrar el envío en la base de datos
@@ -309,7 +320,7 @@ export default class CampaignEmailService {
                 campaignStageId: stage.id,
                 sentAt: DateTime.now(),
                 sentSubject: rendered.subject,
-                sentBody: rendered.body,
+                sentBody: processedHtml,
                 deliveryStatus: 'sent',
                 messageId: info.messageId || null,
               })

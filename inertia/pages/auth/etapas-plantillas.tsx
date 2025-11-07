@@ -1,12 +1,12 @@
 import { Head } from '@inertiajs/react'
 import AppSidebar from '~/components/AppSidebar'
 import { SimpleEditor } from '~/components/tiptap-templates/simple/simple-editor'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
-import { Plus, FileText, Edit, Trash2, Eye, X, Link2, Unlink } from 'lucide-react'
+import { Plus, FileText, Edit, Trash2, Eye, X, Link2, Unlink, Filter, Search, RefreshCw } from 'lucide-react'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { AlertDialog } from '~/components/ui/alert-dialog'
@@ -79,6 +79,14 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   // Estados para modales
   const [viewingTemplate, setViewingTemplate] = useState<Template | null>(null)
   
+  // Estados para filtros de etapas
+  const [searchTerm, setSearchTerm] = useState('')
+  const [filterCampaign, setFilterCampaign] = useState<string>('')
+  const [filterDateFrom, setFilterDateFrom] = useState<string>('')
+  const [filterDateTo, setFilterDateTo] = useState<string>('')
+  const [filterHasTemplates, setFilterHasTemplates] = useState<string>('')
+  const [isRefreshingStages, setIsRefreshingStages] = useState(false)
+  
   // Formulario de etapa
   const [stageFormData, setStageFormData] = useState({
     name: '',
@@ -126,7 +134,13 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       })
       const data = await response.json()
       if (data.success) {
-        setStages(data.data)
+        // Ordenar por última modificación (más reciente primero)
+        const sortedStages = [...data.data].sort((a, b) => {
+          const dateA = new Date(a.updatedAt).getTime()
+          const dateB = new Date(b.updatedAt).getTime()
+          return dateB - dateA // Orden descendente (más reciente primero)
+        })
+        setStages(sortedStages)
       } else {
         showError('Error al cargar', 'No se pudieron cargar las etapas')
       }
@@ -147,7 +161,13 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       })
       const data = await response.json()
       if (data.success) {
-        setTemplates(data.data)
+        // Ordenar por última modificación (más reciente primero)
+        const sortedTemplates = [...data.data].sort((a, b) => {
+          const dateA = new Date(a.updatedAt).getTime()
+          const dateB = new Date(b.updatedAt).getTime()
+          return dateB - dateA // Orden descendente (más reciente primero)
+        })
+        setTemplates(sortedTemplates)
       } else {
         showError('Error al cargar', 'No se pudieron cargar las plantillas')
       }
@@ -164,6 +184,135 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     loadStages()
     loadTemplates()
   }, [])
+
+  // Filtrar etapas según todos los criterios
+  const filteredStages = useMemo(() => {
+    return stages.filter((stage) => {
+      // Filtro de búsqueda general
+      if (searchTerm) {
+        const searchLower = searchTerm.toLowerCase()
+        const matchesSearch = (
+          stage.name.toLowerCase().includes(searchLower) ||
+          stage.campaign?.name.toLowerCase().includes(searchLower) ||
+          stage.stageNumber.toString().includes(searchLower) ||
+          stage.templates?.some(t => t.name.toLowerCase().includes(searchLower) || t.subject.toLowerCase().includes(searchLower))
+        )
+        if (!matchesSearch) return false
+      }
+
+      // Filtro por campaña
+      if (filterCampaign) {
+        if (stage.campaignId.toString() !== filterCampaign) {
+          return false
+        }
+      }
+
+      // Filtro por plantillas asociadas
+      if (filterHasTemplates) {
+        if (filterHasTemplates === 'con' && (!stage.templates || stage.templates.length === 0)) {
+          return false
+        }
+        if (filterHasTemplates === 'sin' && stage.templates && stage.templates.length > 0) {
+          return false
+        }
+      }
+
+      // Filtro por fecha de inicio
+      if (filterDateFrom || filterDateTo) {
+        if (!stage.startsAt) {
+          // Si no tiene fecha de inicio y hay filtros de fecha, excluir
+          return false
+        } else {
+          // Normalizar la fecha de inicio para comparar solo año, mes y día
+          const startsDate = new Date(stage.startsAt)
+          const startsDateOnly = new Date(startsDate.getFullYear(), startsDate.getMonth(), startsDate.getDate())
+          
+          // Si ambas fechas son iguales, buscar desde 00:00 hasta 23:59 del mismo día
+          if (filterDateFrom && filterDateTo && filterDateFrom === filterDateTo) {
+            // Crear fecha desde el string YYYY-MM-DD
+            const [year, month, day] = filterDateFrom.split('-').map(Number)
+            const targetDateOnly = new Date(year, month - 1, day)
+            
+            // Comparar solo las fechas (sin hora) - esto cubre todo el día desde 00:00 hasta 23:59
+            if (startsDateOnly.getTime() !== targetDateOnly.getTime()) {
+              return false
+            }
+          } else {
+            // Lógica normal para rangos de fechas diferentes
+            if (filterDateFrom) {
+              const [year, month, day] = filterDateFrom.split('-').map(Number)
+              const fromDate = new Date(year, month - 1, day, 0, 0, 0, 0)
+              const fromDateOnly = new Date(fromDate.getFullYear(), fromDate.getMonth(), fromDate.getDate())
+              
+              if (startsDateOnly < fromDateOnly) return false
+            }
+
+            if (filterDateTo) {
+              const [year, month, day] = filterDateTo.split('-').map(Number)
+              const toDate = new Date(year, month - 1, day, 23, 59, 59, 999)
+              const toDateOnly = new Date(toDate.getFullYear(), toDate.getMonth(), toDate.getDate())
+              
+              if (startsDateOnly > toDateOnly) return false
+            }
+          }
+        }
+      }
+
+      return true
+    })
+  }, [stages, searchTerm, filterCampaign, filterDateFrom, filterDateTo, filterHasTemplates])
+
+  // Función para limpiar todos los filtros
+  const clearFilters = () => {
+    setSearchTerm('')
+    setFilterCampaign('')
+    setFilterDateFrom('')
+    setFilterDateTo('')
+    setFilterHasTemplates('')
+  }
+
+  // Verificar si hay filtros activos
+  const hasActiveFilters = searchTerm || filterCampaign || filterDateFrom || filterDateTo || filterHasTemplates
+
+  // Función para refrescar etapas
+  const refreshStages = async () => {
+    setIsRefreshingStages(true)
+    try {
+      await loadStages()
+      showSuccess('Lista de etapas actualizada correctamente')
+    } catch (error) {
+      console.error('Error al actualizar etapas:', error)
+      showError('Error de conexión', 'No se pudo actualizar la lista de etapas')
+    } finally {
+      setIsRefreshingStages(false)
+    }
+  }
+
+  // Función para formatear fecha
+  const formatDate = (dateString: string | null | undefined) => {
+    if (!dateString) return null
+    const date = new Date(dateString)
+    return date.toLocaleString('es-ES', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+  }
+
+  // Función para convertir fecha a formato datetime-local sin cambiar zona horaria
+  const formatDateForInput = (dateString: string | null | undefined) => {
+    if (!dateString) return ''
+    const date = new Date(dateString)
+    // Obtener componentes en zona horaria local
+    const year = date.getFullYear()
+    const month = String(date.getMonth() + 1).padStart(2, '0')
+    const day = String(date.getDate()).padStart(2, '0')
+    const hours = String(date.getHours()).padStart(2, '0')
+    const minutes = String(date.getMinutes()).padStart(2, '0')
+    return `${year}-${month}-${day}T${hours}:${minutes}`
+  }
 
   // Guardar etapa
   const handleSaveStage = async () => {
@@ -322,7 +471,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       name: stage.name,
       stageNumber: stage.stageNumber,
       campaignId: stage.campaignId.toString(),
-      startsAt: stage.startsAt ? new Date(stage.startsAt).toISOString().slice(0, 16) : ''
+      startsAt: formatDateForInput(stage.startsAt)
     })
     setEditingStageId(stage.id)
     setShowStageForm(true)
@@ -447,154 +596,184 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
             </div>
             <div className="flex gap-2">
               <Button 
-                onClick={() => setShowStageForm(!showStageForm)}
-                variant={showStageForm ? "outline" : "default"}
+                onClick={() => {
+                  resetStageForm()
+                  setShowStageForm(true)
+                }}
                 className="flex items-center gap-2"
               >
                 <Plus className="h-4 w-4" />
-                {showStageForm ? 'Cancelar' : 'Nueva Etapa'}
+                Nueva Etapa
               </Button>
               <Button 
-                onClick={() => setShowTemplateForm(!showTemplateForm)}
-                variant={showTemplateForm ? "outline" : "default"}
+                onClick={() => {
+                  resetTemplateForm()
+                  setShowTemplateForm(true)
+                }}
                 className="flex items-center gap-2"
               >
                 <Plus className="h-4 w-4" />
-                {showTemplateForm ? 'Cancelar' : 'Nueva Plantilla'}
+                Nueva Plantilla
               </Button>
             </div>
           </div>
 
-          {/* Formulario de Etapa */}
-          {showStageForm && (
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle>{editingStageId ? 'Editar Etapa' : 'Nueva Etapa'}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="stage-name">Nombre de la Etapa</Label>
-                    <Input
-                      id="stage-name"
-                      value={stageFormData.name}
-                      onChange={(e) => setStageFormData({ ...stageFormData, name: e.target.value })}
-                      placeholder="Ej: Bienvenida"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="stage-campaign">Campaña</Label>
-                    <select
-                      id="stage-campaign"
-                      value={stageFormData.campaignId}
-                      onChange={(e) => setStageFormData({ ...stageFormData, campaignId: e.target.value })}
-                      className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                    >
-                      <option value="">Selecciona una campaña</option>
-                      {campaigns.map(campaign => (
-                        <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <Label htmlFor="stage-number">Número de Etapa</Label>
-                    <Input
-                      id="stage-number"
-                      type="number"
-                      min="1"
-                      value={stageFormData.stageNumber}
-                      onChange={(e) => setStageFormData({ ...stageFormData, stageNumber: parseInt(e.target.value) || 1 })}
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="stage-starts">Fecha de Inicio</Label>
-                    <Input
-                      id="stage-starts"
-                      type="datetime-local"
-                      value={stageFormData.startsAt}
-                      onChange={(e) => setStageFormData({ ...stageFormData, startsAt: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-3 justify-end pt-2 border-t">
-                  <Button variant="outline" onClick={resetStageForm}>Cancelar</Button>
-                  <Button onClick={handleSaveStage} disabled={savingStage}>
-                    {savingStage ? 'Guardando...' : 'Guardar Etapa'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Formulario de Plantilla */}
-          {showTemplateForm && (
-            <Card className="shadow-lg">
-              <CardHeader>
-                <CardTitle>{editingTemplateId ? 'Editar Plantilla' : 'Nueva Plantilla'}</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="template-name">Nombre</Label>
-                    <Input
-                      id="template-name"
-                      value={templateFormData.name}
-                      onChange={(e) => setTemplateFormData({ ...templateFormData, name: e.target.value })}
-                      placeholder="Ej: Bienvenida"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="template-subject">Asunto</Label>
-                    <Input
-                      id="template-subject"
-                      value={templateFormData.subject}
-                      onChange={(e) => setTemplateFormData({ ...templateFormData, subject: e.target.value })}
-                      placeholder="Ej: ¡Bienvenido!"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <Label htmlFor="template-content">Contenido</Label>
-                  <div className="border rounded-lg h-[400px] mt-2">
-                    <SimpleEditor
-                      content={templateFormData.content}
-                      onChange={(content: string) => setTemplateFormData({ ...templateFormData, content })}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-3 justify-end pt-2 border-t">
-                  <Button variant="outline" onClick={resetTemplateForm}>Cancelar</Button>
-                  <Button onClick={handleSaveTemplate} disabled={savingTemplate}>
-                    {savingTemplate ? 'Guardando...' : 'Guardar Plantilla'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
           {/* Lista de Etapas */}
           <div className="space-y-4">
-            <h2 className="text-xl font-semibold text-gray-800">Etapas de Campaña</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-xl font-semibold text-gray-800">Etapas de Campaña</h2>
+              <div className="flex items-center gap-2">
+                {hasActiveFilters && (
+                  <button
+                    onClick={clearFilters}
+                    className="flex items-center gap-2 px-3 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition-colors text-sm"
+                    title="Limpiar filtros"
+                  >
+                    <X className="h-4 w-4" />
+                    Limpiar
+                  </button>
+                )}
+                <button
+                  onClick={refreshStages}
+                  disabled={isRefreshingStages}
+                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <RefreshCw className={`h-4 w-4 ${isRefreshingStages ? 'animate-spin' : ''}`} />
+                  Actualizar
+                </button>
+              </div>
+            </div>
+
+            {/* Filtros */}
+            <div className="bg-white p-4 rounded-lg shadow border border-gray-200">
+              <div className="flex items-center gap-2 mb-3">
+                <Filter className="h-4 w-4 text-gray-500" />
+                <h3 className="text-sm font-medium text-gray-700">Filtros</h3>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+                {/* Búsqueda general */}
+                <div className="lg:col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Búsqueda General
+                  </label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por nombre, campaña, número..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Filtro por Campaña */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Campaña
+                  </label>
+                  <select
+                    value={filterCampaign}
+                    onChange={(e) => setFilterCampaign(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  >
+                    <option value="">Todas las campañas</option>
+                    {campaigns.map((campaign) => (
+                      <option key={campaign.id} value={campaign.id.toString()}>
+                        {campaign.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Filtro por Plantillas */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Plantillas
+                  </label>
+                  <select
+                    value={filterHasTemplates}
+                    onChange={(e) => setFilterHasTemplates(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  >
+                    <option value="">Todas</option>
+                    <option value="con">Con plantillas</option>
+                    <option value="sin">Sin plantillas</option>
+                  </select>
+                </div>
+
+                {/* Filtro por Fecha Desde */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Fecha Desde
+                  </label>
+                  <input
+                    type="date"
+                    value={filterDateFrom}
+                    onChange={(e) => setFilterDateFrom(e.target.value)}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  />
+                </div>
+
+                {/* Filtro por Fecha Hasta */}
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Fecha Hasta
+                  </label>
+                  <input
+                    type="date"
+                    value={filterDateTo}
+                    onChange={(e) => setFilterDateTo(e.target.value)}
+                    min={filterDateFrom}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 text-sm"
+                  />
+                </div>
+              </div>
+            </div>
+
             {loadingStages ? (
               <div className="text-center py-12 text-gray-500">Cargando etapas...</div>
-            ) : stages.length === 0 ? (
+            ) : filteredStages.length === 0 ? (
               <Card className="border-2 border-dashed">
                 <CardContent className="py-12 text-center">
                   <FileText className="h-16 w-16 text-gray-300 mx-auto mb-4" />
-                  <p className="text-gray-500 font-medium">No hay etapas creadas aún</p>
+                  <p className="text-gray-500 font-medium">
+                    {hasActiveFilters ? 'No se encontraron etapas con los filtros aplicados' : 'No hay etapas creadas aún'}
+                  </p>
+                  {hasActiveFilters && (
+                    <button
+                      onClick={clearFilters}
+                      className="mt-4 text-sm text-orange-600 hover:text-orange-700 underline"
+                    >
+                      Limpiar filtros
+                    </button>
+                  )}
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-4">
-                {stages.map((stage) => (
+              <div className="max-h-[600px] overflow-y-auto pr-2 space-y-4 border border-gray-200 rounded-lg p-4">
+                {filteredStages.map((stage) => (
                   <Card key={stage.id} className="hover:shadow-lg transition-all">
                     <CardHeader>
                       <div className="flex justify-between items-start">
-                        <div>
+                        <div className="flex-1">
                           <CardTitle className="text-lg">{stage.name}</CardTitle>
                           <p className="text-sm text-gray-500 mt-1">
-                            Etapa #{stage.stageNumber} - {stage.campaign?.name || 'Sin campaña'}
+                            Número de etapas: {stage.stageNumber}
                           </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {stage.campaign && (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                Campaña: {stage.campaign.name}
+                              </span>
+                            )}
+                            {stage.startsAt && (
+                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                Fecha de inicio: {formatDate(stage.startsAt)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex gap-1">
                           <Button variant="ghost" size="sm" onClick={() => handleEditStage(stage)}>
@@ -744,6 +923,127 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
           cancelText="Cancelar"
           variant="destructive"
         />
+
+        {/* Modal de Etapa */}
+        {showStageForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => resetStageForm()}>
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 border-b">
+                <h3 className="text-xl font-semibold">{editingStageId ? 'Editar Etapa' : 'Nueva Etapa'}</h3>
+                <Button variant="ghost" size="sm" onClick={() => resetStageForm()}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="modal-stage-name">Nombre de la Etapa</Label>
+                      <Input
+                        id="modal-stage-name"
+                        value={stageFormData.name}
+                        onChange={(e) => setStageFormData({ ...stageFormData, name: e.target.value })}
+                        placeholder="Ej: Bienvenida"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="modal-stage-campaign">Campaña</Label>
+                      <select
+                        id="modal-stage-campaign"
+                        value={stageFormData.campaignId}
+                        onChange={(e) => setStageFormData({ ...stageFormData, campaignId: e.target.value })}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                      >
+                        <option value="">Selecciona una campaña</option>
+                        {campaigns.map(campaign => (
+                          <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label htmlFor="modal-stage-number">Número de Etapa</Label>
+                      <Input
+                        id="modal-stage-number"
+                        type="number"
+                        min="1"
+                        value={stageFormData.stageNumber}
+                        onChange={(e) => setStageFormData({ ...stageFormData, stageNumber: parseInt(e.target.value) || 1 })}
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="modal-stage-starts">Fecha de Inicio</Label>
+                      <Input
+                        id="modal-stage-starts"
+                        type="datetime-local"
+                        value={stageFormData.startsAt}
+                        onChange={(e) => setStageFormData({ ...stageFormData, startsAt: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
+                <Button variant="outline" onClick={() => resetStageForm()}>Cancelar</Button>
+                <Button onClick={handleSaveStage} disabled={savingStage}>
+                  {savingStage ? 'Guardando...' : editingStageId ? 'Actualizar Etapa' : 'Crear Etapa'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Plantilla */}
+        {showTemplateForm && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => resetTemplateForm()}>
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between p-6 border-b">
+                <h3 className="text-xl font-semibold">{editingTemplateId ? 'Editar Plantilla' : 'Nueva Plantilla'}</h3>
+                <Button variant="ghost" size="sm" onClick={() => resetTemplateForm()}>
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6">
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="modal-template-name">Nombre</Label>
+                      <Input
+                        id="modal-template-name"
+                        value={templateFormData.name}
+                        onChange={(e) => setTemplateFormData({ ...templateFormData, name: e.target.value })}
+                        placeholder="Ej: Bienvenida"
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="modal-template-subject">Asunto</Label>
+                      <Input
+                        id="modal-template-subject"
+                        value={templateFormData.subject}
+                        onChange={(e) => setTemplateFormData({ ...templateFormData, subject: e.target.value })}
+                        placeholder="Ej: ¡Bienvenido!"
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="modal-template-content">Contenido</Label>
+                    <div className="border rounded-lg h-[400px] mt-2">
+                      <SimpleEditor
+                        content={templateFormData.content}
+                        onChange={(content: string) => setTemplateFormData({ ...templateFormData, content })}
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">
+                <Button variant="outline" onClick={() => resetTemplateForm()}>Cancelar</Button>
+                <Button onClick={handleSaveTemplate} disabled={savingTemplate}>
+                  {savingTemplate ? 'Guardando...' : editingTemplateId ? 'Actualizar Plantilla' : 'Crear Plantilla'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Modal de visualización de plantilla */}
         {viewingTemplate && (

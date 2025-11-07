@@ -35,15 +35,6 @@ export default function Dashboard({ user, isFirstVisit }: DashboardProps) {
                 <span className="font-medium">Autenticación exitosa</span>
               </div>
             </div>
-            <div className="mt-6">
-              <Link
-                href="/envios"
-                className="inline-flex items-center gap-2 px-6 py-3 bg-white border-2 border-orange-500 text-orange-600 rounded-lg shadow-md hover:bg-orange-50 hover:shadow-lg transition-all duration-300 ease-out font-medium"
-              >
-                <Mail className="h-5 w-5" />
-                Ver Envíos
-              </Link>
-            </div>
           </div>
         </div>
       </AppSidebar>

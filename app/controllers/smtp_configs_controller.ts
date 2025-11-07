@@ -8,8 +8,8 @@ export default class SmtpConfigsController {
    * Guardar configuración SMTP
    */
   async store({ request, response, auth }: HttpContext) {
-    const { host, port, username, password, fromEmail } = request.only([
-      'host', 'port', 'username', 'password', 'fromEmail'
+    const { host, port, username, password, fromEmail, name } = request.only([
+      'host', 'port', 'username', 'password', 'fromEmail', 'name'
     ])
 
     try {
@@ -76,7 +76,8 @@ export default class SmtpConfigsController {
         password: password,
         host: host,
         port: port,
-        protocole: this.getProtocolByPort(parseInt(port))
+        protocole: this.getProtocolByPort(parseInt(port)),
+        name: name || null
       })
 
       return response.ok({
@@ -140,6 +141,7 @@ export default class SmtpConfigsController {
         protocole: setup.smtpConfig.protocole,
         fromEmail: setup.from,
         isActive: setup.smtpConfig.isActive,
+        name: setup.smtpConfig.name,
         createdAt: setup.createdAt
       }))
 
@@ -199,6 +201,125 @@ export default class SmtpConfigsController {
       return response.internalServerError({
         success: false,
         message: 'Error al eliminar la configuración SMTP'
+      })
+    }
+  }
+
+  /**
+   * Actualizar una configuración SMTP
+   */
+  async update({ params, request, response, auth }: HttpContext) {
+    try {
+      const user = auth.user!
+      const configId = params.id
+      const { host, port, username, password, fromEmail, name } = request.only([
+        'host', 'port', 'username', 'password', 'fromEmail', 'name'
+      ])
+
+      // Buscar la configuración SMTP
+      const smtpConfig = await SmtpConfig.query()
+        .where('id', configId)
+        .preload('emailSetup')
+        .first()
+
+      if (!smtpConfig) {
+        return response.notFound({
+          success: false,
+          message: 'Configuración SMTP no encontrada'
+        })
+      }
+
+      // Verificar que el usuario sea el propietario
+      if (smtpConfig.emailSetup.userId !== user.id) {
+        return response.forbidden({
+          success: false,
+          message: 'No tienes permisos para editar esta configuración'
+        })
+      }
+
+      // Validar que se proporcione la contraseña
+      if (!password || password.trim() === '') {
+        return response.badRequest({
+          success: false,
+          message: 'La contraseña es requerida para actualizar la configuración'
+        })
+      }
+
+      // Verificar que la contraseña proporcionada coincida con la guardada
+      if (password !== smtpConfig.password) {
+        return response.badRequest({
+          success: false,
+          message: 'La contraseña proporcionada no coincide con la contraseña guardada'
+        })
+      }
+
+      // Verificar si los nuevos valores ya existen en otra configuración (excluyendo la actual)
+      // Solo si se han cambiado los campos que definen la unicidad
+      const hasChanged = (
+        smtpConfig.host !== host ||
+        smtpConfig.port !== port ||
+        smtpConfig.user !== username ||
+        smtpConfig.protocole !== this.getProtocolByPort(parseInt(port))
+      )
+
+      if (hasChanged) {
+        // Buscar si existe otra configuración con los mismos valores
+        const userEmailSetups = await EmailSetup.query()
+          .where('userId', user.id)
+          .where('active', true)
+          .select('id')
+
+        const existingConfig = await SmtpConfig.query()
+          .whereIn('emailSetupId', userEmailSetups.map(setup => setup.id))
+          .where('id', '!=', configId) // Excluir la configuración actual
+          .where('user', username)
+          .where('host', host)
+          .where('port', port)
+          .where('protocole', this.getProtocolByPort(parseInt(port)))
+          .first()
+
+        // Si existe otra configuración idéntica, permitir la actualización de todos modos
+        // ya que es una actualización, no una creación nueva
+        if (existingConfig) {
+          // Opcional: Podrías decidir si quieres mostrar un warning o simplemente actualizar
+          // Por ahora, permitimos la actualización
+        }
+      }
+
+      // Actualizar la configuración SMTP
+      smtpConfig.host = host
+      smtpConfig.port = port
+      smtpConfig.user = username
+      smtpConfig.name = name || null
+      smtpConfig.protocole = this.getProtocolByPort(parseInt(port))
+      // Mantener la misma contraseña (ya validada)
+      smtpConfig.password = password
+
+      await smtpConfig.save()
+
+      // Actualizar el email setup asociado
+      smtpConfig.emailSetup.email = username
+      smtpConfig.emailSetup.from = fromEmail
+      await smtpConfig.emailSetup.save()
+
+      return response.ok({
+        success: true,
+        message: 'Configuración SMTP actualizada correctamente',
+        data: {
+          id: smtpConfig.id,
+          host: smtpConfig.host,
+          port: smtpConfig.port,
+          user: smtpConfig.user,
+          protocole: smtpConfig.protocole,
+          name: smtpConfig.name,
+          fromEmail: smtpConfig.emailSetup.from
+        }
+      })
+    } catch (error) {
+      console.error('Error al actualizar configuración SMTP:', error)
+      return response.internalServerError({
+        success: false,
+        message: 'Error al actualizar la configuración SMTP'
       })
     }
   }
