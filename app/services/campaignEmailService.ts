@@ -10,6 +10,7 @@ import SubscriberList from '#models/subscriber_list'
 import Sending from '#models/sending'
 import TemplateRenderService from './templatesRenderService.js'
 import HtmlEmailProcessor from './htmlEmailProcessor.js'
+import AttachmentService from './attachmentService.js'
 
 export default class CampaignEmailService {
   private renderService: TemplateRenderService
@@ -17,6 +18,7 @@ export default class CampaignEmailService {
   constructor() {
     this.renderService = new TemplateRenderService()
   }
+
 
   /**
    * Crea un transporter de nodemailer basado en la configuración SMTP
@@ -297,18 +299,87 @@ export default class CampaignEmailService {
               const rendered = await this.renderService.render(template, subscriber)
 
               // Procesar el HTML para convertir rutas relativas de imágenes a URLs absolutas
-              const processedHtml = await HtmlEmailProcessor.processHtmlForEmail(rendered.body)
+              const { html: processedHtml, attachments } = await HtmlEmailProcessor.processHtmlForEmail(rendered.body)
 
               // Preparar el remitente
               const fromAddress = emailSetup.from || emailSetup.email
               const fromName = campaign.tenant?.name || emailSetup.name || 'Sistema'
 
+              // Preparar adjuntos para nodemailer usando base64
+              const emailAttachments = attachments.map((att) => {
+                try {
+                  // Si el adjunto ya está en base64, usarlo directamente
+                  if (att.base64) {
+                    const nodemailerAttachment = AttachmentService.toNodemailerAttachment(att.base64)
+                    console.log(`✅ [CampaignEmailService] Adjunto en base64: ${att.filename} (${(att.base64.size / 1024).toFixed(2)} KB)`)
+                    return nodemailerAttachment
+                  } else {
+                    // Fallback: si no hay base64, leer el archivo (compatibilidad hacia atrás)
+                    console.warn(`⚠️ [CampaignEmailService] Adjunto sin base64, usando path: ${att.filename}`)
+                    return {
+                      filename: att.filename,
+                      path: att.path
+                    }
+                  }
+                } catch (fileError: any) {
+                  console.error(`❌ [CampaignEmailService] Error al procesar adjunto ${att.filename}:`, fileError.message)
+                  throw fileError
+                }
+              })
+
+              console.log(`📎 [CampaignEmailService] Adjuntos preparados: ${emailAttachments.length}`)
+              if (emailAttachments.length > 0) {
+                emailAttachments.forEach((att, index) => {
+                  let attInfo: string
+                  if ('path' in att) {
+                    attInfo = `path: ${att.path}`
+                  } else if ('content' in att) {
+                    attInfo = `content: ${(att.content as Buffer).length} bytes, contentType: ${att.contentType || 'N/A'}`
+                  } else {
+                    attInfo = 'unknown format'
+                  }
+                  console.log(`  ${index + 1}. ${att.filename} -> ${attInfo}`)
+                })
+              }
+
               // Enviar el correo
-              const info = await transporter.sendMail({
+              const mailOptions: any = {
                 from: `"${fromName}" <${fromAddress}>`,
                 to: subscriber.email,
                 subject: rendered.subject,
                 html: processedHtml,
+              }
+
+              // Solo agregar attachments si hay adjuntos
+              if (emailAttachments.length > 0) {
+                mailOptions.attachments = emailAttachments
+                console.log(`📎 [CampaignEmailService] Enviando correo con ${emailAttachments.length} adjunto(s)`)
+                
+                // Verificar que los archivos están listos antes de enviar
+                for (const att of emailAttachments) {
+                  if ('path' in att && att.path) {
+                    try {
+                      const fs = await import('fs/promises')
+                      const stats = await fs.stat(att.path)
+                      console.log(`✅ [CampaignEmailService] Archivo verificado (path): ${att.filename} (${(stats.size / 1024).toFixed(2)} KB)`)
+                    } catch (fileError: any) {
+                      console.error(`❌ [CampaignEmailService] Archivo no encontrado antes de enviar: ${att.path}`, fileError.message)
+                      throw new Error(`Archivo adjunto no encontrado: ${att.filename}`)
+                    }
+                  } else if ('content' in att) {
+                    console.log(`✅ [CampaignEmailService] Archivo en memoria verificado (base64): ${att.filename} (${(att.content as Buffer).length} bytes, contentType: ${att.contentType || 'N/A'})`)
+                  }
+                }
+              }
+
+              console.log(`📧 [CampaignEmailService] Enviando correo a: ${subscriber.email}`)
+              const info = await transporter.sendMail(mailOptions)
+              console.log(`✅ [CampaignEmailService] Correo enviado exitosamente. MessageId: ${info.messageId}`)
+              console.log(`📊 [CampaignEmailService] Respuesta del servidor:`, {
+                messageId: info.messageId,
+                response: info.response,
+                accepted: info.accepted,
+                rejected: info.rejected
               })
 
               // Registrar el envío en la base de datos
@@ -334,7 +405,14 @@ export default class CampaignEmailService {
               failedCount++
               const errorMessage = `Error al enviar a ${subscriber.email}: ${error.message}`
               errors.push(errorMessage)
-              console.error(errorMessage, error)
+              console.error(`❌ [CampaignEmailService] Error al enviar correo:`, {
+                email: subscriber.email,
+                error: error.message,
+                stack: error.stack,
+                code: error.code,
+                response: error.response,
+                responseCode: error.responseCode
+              })
 
               // Registrar el envío fallido
               try {

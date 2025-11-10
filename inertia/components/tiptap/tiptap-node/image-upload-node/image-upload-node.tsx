@@ -537,11 +537,12 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
   const inputRef = React.useRef<HTMLInputElement>(null)
   const extension = props.extension
   
-  // Estado para mantener la preview de la imagen después de subirla
+  // Estado para mantener la preview de los archivos después de subirlos
   const [uploadedImages, setUploadedImages] = React.useState<Array<{
     url: string
     filename: string
     filesize: number
+    fileType: string
   }>>([])
 
   const uploadOptions: UploadOptions = {
@@ -562,11 +563,12 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
     if (urls.length > 0) {
       console.log('📸 URLs recibidas:', urls)
       
-      // Guardar la información de las imágenes subidas para mostrar la preview persistente
+      // Guardar la información de los archivos subidos para mostrar la preview persistente
       const newUploadedImages = urls.map((url, index) => ({
         url,
-        filename: files[index]?.name || 'image',
-        filesize: files[index]?.size || 0
+        filename: files[index]?.name || 'file',
+        filesize: files[index]?.size || 0,
+        fileType: files[index]?.type || ''
       }))
       setUploadedImages(newUploadedImages)
       
@@ -575,19 +577,71 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
       if (isValidPosition(pos)) {
         const nodes = urls.map((url, index) => {
           const file = files[index]
-          const filename = file?.name.replace(/\.[^/.]+$/, "") || "unknown"
-          // Los PDF ahora se convierten a imagen, así que siempre insertamos como imagen
-          const imageNode = {
-            type: 'image',
-            attrs: {
-              src: url,
-              alt: filename,
-              title: filename,
-            },
+          if (!file) return null
+          
+          const filename = file.name.replace(/\.[^/.]+$/, "") || "unknown"
+          const fileType = file.type || ''
+          
+          // Detectar si es imagen
+          const isImage = fileType.startsWith('image/')
+          
+          // Detectar si es un archivo adjunto (PDF, Word, texto, RAR, Excel)
+          const isAttachment = 
+            fileType === 'application/pdf' ||
+            fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+            fileType === 'text/plain' ||
+            fileType === 'application/x-rar-compressed' ||
+            fileType === 'application/x-rar' ||
+            fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+            fileType === 'application/vnd.ms-excel' ||
+            fileType === 'application/excel' ||
+            file.name.toLowerCase().endsWith('.pdf') ||
+            file.name.toLowerCase().endsWith('.docx') ||
+            file.name.toLowerCase().endsWith('.txt') ||
+            file.name.toLowerCase().endsWith('.rar') ||
+            file.name.toLowerCase().endsWith('.xlsx') ||
+            file.name.toLowerCase().endsWith('.xls')
+          
+          if (isImage) {
+            // Insertar como imagen
+            const imageNode = {
+              type: 'image',
+              attrs: {
+                src: url,
+                alt: filename,
+                title: filename,
+              },
+            }
+            console.log('🖼️ Nodo de imagen creado:', imageNode)
+            return imageNode
+          } else if (isAttachment) {
+            // Insertar como adjunto
+            const attachmentNode = {
+              type: 'attachment',
+              attrs: {
+                src: url,
+                name: file.name,
+                fileName: file.name,
+                size: file.size,
+              },
+            }
+            console.log('📎 Nodo de adjunto creado:', attachmentNode)
+            return attachmentNode
+          } else {
+            // Por defecto, insertar como adjunto para otros tipos
+            const attachmentNode = {
+              type: 'attachment',
+              attrs: {
+                src: url,
+                name: file.name,
+                fileName: file.name,
+                size: file.size,
+              },
+            }
+            console.log('📎 Nodo de adjunto creado (tipo desconocido):', attachmentNode)
+            return attachmentNode
           }
-          console.log('🖼️ Nodo de imagen creado:', imageNode)
-          return imageNode
-        })
+        }).filter(node => node !== null)
 
         console.log('📝 Nodos a insertar:', nodes)
         
@@ -652,23 +706,32 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
       {/* Mostrar preview persistente después de subir */}
       {!hasFiles && hasUploadedImages && (
         <div className="tiptap-image-upload-previews">
-          {uploadedImages.map((image, index) => (
-            <ImageUploadPreview
-              key={index}
-              fileItem={{
-                id: `uploaded-${index}`,
-                file: new File([], image.filename),
-                progress: 100,
-                status: 'success',
-                url: image.url
-              }}
-              onRemove={() => {
-                const newImages = [...uploadedImages]
-                newImages.splice(index, 1)
-                setUploadedImages(newImages)
-              }}
-            />
-          ))}
+          {uploadedImages.map((uploadedFile, index) => {
+            const isImage = uploadedFile.fileType.startsWith('image/')
+            
+            // Crear un objeto File simulado para el preview
+            const mockFile = new File([], uploadedFile.filename, {
+              type: uploadedFile.fileType
+            })
+            
+            return (
+              <ImageUploadPreview
+                key={index}
+                fileItem={{
+                  id: `uploaded-${index}`,
+                  file: mockFile,
+                  progress: 100,
+                  status: 'success',
+                  url: isImage ? uploadedFile.url : undefined
+                }}
+                onRemove={() => {
+                  const newImages = [...uploadedImages]
+                  newImages.splice(index, 1)
+                  setUploadedImages(newImages)
+                }}
+              />
+            )
+          })}
         </div>
       )}
 

@@ -376,15 +376,8 @@ export const handleImageUpload = async (
   }
 
   try {
-    // Detectar si es PDF y convertirlo a imagen
-    let fileToUpload = file
-    if (file.type === 'application/pdf') {
-      console.log('📄 Detectado PDF, convirtiendo primera página a imagen...')
-      onProgress?.({ progress: 10 })
-      fileToUpload = await convertPdfToImage(file)
-      onProgress?.({ progress: 40 })
-      console.log('✅ PDF convertido a imagen:', fileToUpload.name)
-    }
+    // NO convertir PDFs a imagen - subir archivo tal cual
+    const fileToUpload = file
     
     // Subir archivo al servidor
     const formData = new FormData()
@@ -395,7 +388,7 @@ export const handleImageUpload = async (
     
     // Iniciar simulación de progreso en paralelo con la petición
     const progressPromise = (async () => {
-      const startProgress = file.type === 'application/pdf' ? 40 : 0
+      const startProgress = 0
       const endProgress = 90
       for (let i = startProgress; i <= endProgress; i += 3) {
         if (abortSignal?.aborted) {
@@ -424,7 +417,7 @@ export const handleImageUpload = async (
     const data = await response.json()
     
     if (!response.ok || !data.success || !data.data) {
-      throw new Error(data.message || 'Error al subir la imagen')
+      throw new Error(data.message || 'Error al subir el archivo')
     }
     
     // Solo marcar 100% si todo fue exitoso
@@ -433,7 +426,7 @@ export const handleImageUpload = async (
     // Retornar la URL completa del archivo subido
     return data.data.path
   } catch (error) {
-    console.error('Error uploading image:', error)
+    console.error('Error uploading file:', error)
     throw error
   }
 }
