@@ -1,6 +1,5 @@
 import env from '#start/env'
 import CloudinaryService from './cloudinaryService.js'
-import AttachmentService, { Base64Attachment } from './attachmentService.js'
 import fs from 'fs/promises'
 import path from 'path'
 
@@ -12,7 +11,6 @@ export interface ProcessHtmlResult {
   attachments: Array<{
     filename: string
     path: string
-    base64?: Base64Attachment // Adjunto en base64 si está disponible
   }>
 }
 
@@ -216,7 +214,7 @@ export default class HtmlEmailProcessor {
     const attachmentRegex = /<div[^>]*data-type\s*=\s*["']attachment["'][^>]*>[\s\S]*?<a[^>]+href\s*=\s*["']([^"']+)["'][^>]*>[\s\S]*?<\/a>[\s\S]*?<\/div>/gi
     const attachmentMatches = Array.from(processedHtml.matchAll(attachmentRegex))
 
-    const attachments: Array<{ filename: string; path: string; base64?: Base64Attachment }> = []
+    const attachments: Array<{ filename: string; path: string }> = []
 
     if (attachmentMatches.length > 0) {
       console.log(`📎 [HtmlEmailProcessor] Procesando ${attachmentMatches.length} archivo(s) adjunto(s)`)
@@ -281,26 +279,17 @@ export default class HtmlEmailProcessor {
               try {
                 const finalStats = await fs.stat(absoluteFilePath)
                 if (finalStats.isFile()) {
-                  // Convertir el archivo a base64 usando AttachmentService
-                  const base64Attachment = await AttachmentService.convertFileToBase64(absoluteFilePath, filename)
+                  // Agregar a la lista de adjuntos
+                  attachments.push({
+                    filename,
+                    path: absoluteFilePath
+                  })
                   
-                  if (base64Attachment) {
-                    // Agregar a la lista de adjuntos con información de base64
-                    attachments.push({
-                      filename,
-                      path: absoluteFilePath,
-                      base64: base64Attachment
-                    })
-                    
-                    console.log(`✅ [HtmlEmailProcessor] Adjunto convertido a base64: ${filename} (${(finalStats.size / 1024).toFixed(2)} KB)`)
-                    
-                    // Remover el div de adjunto del HTML (ya no será un enlace)
-                    processedHtml = processedHtml.replace(fullTag, '')
-                    attachmentProcessedCount++
-                  } else {
-                    console.warn(`⚠️ [HtmlEmailProcessor] No se pudo convertir a base64, omitiendo: ${filename}`)
-                    attachmentSkippedCount++
-                  }
+                  console.log(`✅ [HtmlEmailProcessor] Adjunto agregado: ${filename} (${(finalStats.size / 1024).toFixed(2)} KB)`)
+                  
+                  // Remover el div de adjunto del HTML (ya no será un enlace)
+                  processedHtml = processedHtml.replace(fullTag, '')
+                  attachmentProcessedCount++
                 } else {
                   console.warn(`⚠️ [HtmlEmailProcessor] La ruta no es un archivo: ${absoluteFilePath}`)
                   attachmentSkippedCount++

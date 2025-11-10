@@ -10,7 +10,6 @@ import SubscriberList from '#models/subscriber_list'
 import Sending from '#models/sending'
 import TemplateRenderService from './templatesRenderService.js'
 import HtmlEmailProcessor from './htmlEmailProcessor.js'
-import AttachmentService from './attachmentService.js'
 
 export default class CampaignEmailService {
   private renderService: TemplateRenderService
@@ -19,6 +18,27 @@ export default class CampaignEmailService {
     this.renderService = new TemplateRenderService()
   }
 
+  /**
+   * Obtiene el Content-Type basado en la extensión del archivo
+   */
+  private getContentType(filename: string): string {
+    const ext = filename.toLowerCase().split('.').pop() || ''
+    const contentTypes: Record<string, string> = {
+      'pdf': 'application/pdf',
+      'doc': 'application/msword',
+      'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xls': 'application/vnd.ms-excel',
+      'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'txt': 'text/plain',
+      'rar': 'application/x-rar-compressed',
+      'zip': 'application/zip',
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+    }
+    return contentTypes[ext] || 'application/octet-stream'
+  }
 
   /**
    * Crea un transporter de nodemailer basado en la configuración SMTP
@@ -298,6 +318,9 @@ export default class CampaignEmailService {
               // Renderizar la plantilla con los datos del suscriptor
               const rendered = await this.renderService.render(template, subscriber)
 
+              // Construir el asunto final con prefijo personalizado: "Hola {nombre}, {asunto_plantilla}"
+              const finalSubject = `Hola ${subscriber.name || 'Usuario'}, ${rendered.subject}`
+
               // Procesar el HTML para convertir rutas relativas de imágenes a URLs absolutas
               const { html: processedHtml, attachments } = await HtmlEmailProcessor.processHtmlForEmail(rendered.body)
 
@@ -305,39 +328,44 @@ export default class CampaignEmailService {
               const fromAddress = emailSetup.from || emailSetup.email
               const fromName = campaign.tenant?.name || emailSetup.name || 'Sistema'
 
-              // Preparar adjuntos para nodemailer usando base64
-              const emailAttachments = attachments.map((att) => {
-                try {
-                  // Si el adjunto ya está en base64, usarlo directamente
-                  if (att.base64) {
-                    const nodemailerAttachment = AttachmentService.toNodemailerAttachment(att.base64)
-                    console.log(`✅ [CampaignEmailService] Adjunto en base64: ${att.filename} (${(att.base64.size / 1024).toFixed(2)} KB)`)
-                    return nodemailerAttachment
-                  } else {
-                    // Fallback: si no hay base64, leer el archivo (compatibilidad hacia atrás)
-                    console.warn(`⚠️ [CampaignEmailService] Adjunto sin base64, usando path: ${att.filename}`)
-                    return {
-                      filename: att.filename,
-                      path: att.path
+              // Preparar adjuntos para nodemailer
+              // Para archivos grandes, leer el contenido en lugar de usar path
+              const emailAttachments = await Promise.all(
+                attachments.map(async (att) => {
+                  try {
+                    const fs = await import('fs/promises')
+                    const stats = await fs.stat(att.path)
+                    const fileSizeMB = stats.size / (1024 * 1024)
+                    
+                    // Si el archivo es mayor a 5MB, leer el contenido
+                    if (fileSizeMB > 5) {
+                      console.log(`⚠️ [CampaignEmailService] Archivo grande (${fileSizeMB.toFixed(2)} MB), leyendo contenido: ${att.filename}`)
+                      const content = await fs.readFile(att.path)
+                      return {
+                        filename: att.filename,
+                        content: content,
+                        contentType: this.getContentType(att.filename)
+                      }
+                    } else {
+                      // Para archivos pequeños, usar path (más eficiente)
+                      return {
+                        filename: att.filename,
+                        path: att.path
+                      }
                     }
+                  } catch (fileError: any) {
+                    console.error(`❌ [CampaignEmailService] Error al procesar adjunto ${att.filename}:`, fileError.message)
+                    throw fileError
                   }
-                } catch (fileError: any) {
-                  console.error(`❌ [CampaignEmailService] Error al procesar adjunto ${att.filename}:`, fileError.message)
-                  throw fileError
-                }
-              })
+                })
+              )
 
               console.log(`📎 [CampaignEmailService] Adjuntos preparados: ${emailAttachments.length}`)
               if (emailAttachments.length > 0) {
                 emailAttachments.forEach((att, index) => {
-                  let attInfo: string
-                  if ('path' in att) {
-                    attInfo = `path: ${att.path}`
-                  } else if ('content' in att) {
-                    attInfo = `content: ${(att.content as Buffer).length} bytes, contentType: ${att.contentType || 'N/A'}`
-                  } else {
-                    attInfo = 'unknown format'
-                  }
+                  const attInfo = 'path' in att 
+                    ? `path: ${att.path}` 
+                    : `content: ${(att.content as Buffer).length} bytes, contentType: ${att.contentType}`
                   console.log(`  ${index + 1}. ${att.filename} -> ${attInfo}`)
                 })
               }
@@ -346,7 +374,7 @@ export default class CampaignEmailService {
               const mailOptions: any = {
                 from: `"${fromName}" <${fromAddress}>`,
                 to: subscriber.email,
-                subject: rendered.subject,
+                subject: finalSubject, // Usar el asunto con el prefijo personalizado
                 html: processedHtml,
               }
 
@@ -355,24 +383,25 @@ export default class CampaignEmailService {
                 mailOptions.attachments = emailAttachments
                 console.log(`📎 [CampaignEmailService] Enviando correo con ${emailAttachments.length} adjunto(s)`)
                 
-                // Verificar que los archivos están listos antes de enviar
+                // Verificar que los archivos existen antes de enviar (solo si usan path)
                 for (const att of emailAttachments) {
                   if ('path' in att && att.path) {
                     try {
                       const fs = await import('fs/promises')
                       const stats = await fs.stat(att.path)
-                      console.log(`✅ [CampaignEmailService] Archivo verificado (path): ${att.filename} (${(stats.size / 1024).toFixed(2)} KB)`)
+                      console.log(`✅ [CampaignEmailService] Archivo verificado: ${att.filename} (${(stats.size / 1024).toFixed(2)} KB)`)
                     } catch (fileError: any) {
                       console.error(`❌ [CampaignEmailService] Archivo no encontrado antes de enviar: ${att.path}`, fileError.message)
                       throw new Error(`Archivo adjunto no encontrado: ${att.filename}`)
                     }
                   } else if ('content' in att) {
-                    console.log(`✅ [CampaignEmailService] Archivo en memoria verificado (base64): ${att.filename} (${(att.content as Buffer).length} bytes, contentType: ${att.contentType || 'N/A'})`)
+                    console.log(`✅ [CampaignEmailService] Archivo en memoria verificado: ${att.filename} (${(att.content as Buffer).length} bytes, contentType: ${att.contentType})`)
                   }
                 }
               }
 
               console.log(`📧 [CampaignEmailService] Enviando correo a: ${subscriber.email}`)
+              console.log(`📝 [CampaignEmailService] Asunto: ${finalSubject}`)
               const info = await transporter.sendMail(mailOptions)
               console.log(`✅ [CampaignEmailService] Correo enviado exitosamente. MessageId: ${info.messageId}`)
               console.log(`📊 [CampaignEmailService] Respuesta del servidor:`, {
@@ -390,7 +419,7 @@ export default class CampaignEmailService {
                 campaignId: campaignId,
                 campaignStageId: stage.id,
                 sentAt: DateTime.now(),
-                sentSubject: rendered.subject,
+                sentSubject: finalSubject, // Guardar el asunto con el prefijo
                 sentBody: processedHtml,
                 deliveryStatus: 'sent',
                 messageId: info.messageId || null,
@@ -461,4 +490,3 @@ export default class CampaignEmailService {
     return this.sendCampaignEmails(campaignId, stageId)
   }
 }
-

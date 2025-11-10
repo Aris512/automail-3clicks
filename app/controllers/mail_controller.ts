@@ -3,7 +3,6 @@ import SmtpConfig from '#models/smtp_config'
 import nodemailer from 'nodemailer'
 import edge from 'edge.js'
 import HtmlEmailProcessor from '../services/htmlEmailProcessor.js'
-import AttachmentService from '../services/attachmentService.js'
 
 export default class MailController {
   async send({ request, response, auth }: HttpContext) {
@@ -78,35 +77,16 @@ export default class MailController {
       // Procesar el HTML para convertir rutas relativas de imágenes a URLs absolutas
       const { html: processedHtml, attachments } = await HtmlEmailProcessor.processHtmlForEmail(htmlContent)
 
-      // Preparar adjuntos para nodemailer usando base64
-      const emailAttachments = attachments.map((att) => {
-        // Si el adjunto ya está en base64, usarlo directamente
-        if (att.base64) {
-          const nodemailerAttachment = AttachmentService.toNodemailerAttachment(att.base64)
-          console.log(`✅ [MailController] Adjunto en base64: ${att.filename} (${(att.base64.size / 1024).toFixed(2)} KB)`)
-          return nodemailerAttachment
-        } else {
-          // Fallback: si no hay base64, usar path (compatibilidad hacia atrás)
-          console.warn(`⚠️ [MailController] Adjunto sin base64, usando path: ${att.filename}`)
-          return {
-            filename: att.filename,
-            path: att.path
-          }
-        }
-      })
+      // Preparar adjuntos para nodemailer
+      const emailAttachments = attachments.map(att => ({
+        filename: att.filename,
+        path: att.path
+      }))
 
       console.log(`📎 [MailController] Adjuntos preparados: ${emailAttachments.length}`)
       if (emailAttachments.length > 0) {
         emailAttachments.forEach((att, index) => {
-          let attInfo: string
-          if ('path' in att) {
-            attInfo = `path: ${att.path}`
-          } else if ('content' in att) {
-            attInfo = `content: ${(att.content as Buffer).length} bytes, contentType: ${att.contentType || 'N/A'}`
-          } else {
-            attInfo = 'unknown format'
-          }
-          console.log(`  ${index + 1}. ${att.filename} -> ${attInfo}`)
+          console.log(`  ${index + 1}. ${att.filename} -> ${att.path}`)
         })
       }
 
