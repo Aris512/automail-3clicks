@@ -275,14 +275,24 @@ export default class TemplatesController {
                 templateId: templateId,
                 attachmentId: attachment.id
               })
-              console.log(`✅ [ASSOCIATE IMAGES] Relación creada: Attachment ID ${attachment.id} -> Template ID ${templateId}`)
+              console.log(`✅ [ASSOCIATE IMAGES] Relación creada:`)
+              console.log(`   - Template ID: ${templateId}`)
+              console.log(`   - Attachment ID: ${attachment.id}`)
+              console.log(`   - Archivo: ${attachment.fileName || attachment.name || 'N/A'}`)
+              console.log(`   - Ruta: ${attachment.path || 'N/A'}`)
+              console.log(`   - Tamaño: ${attachment.size ? `${(attachment.size / 1024).toFixed(2)} KB` : 'N/A'}`)
+              console.log(`   - URL encontrada: ${attachmentUrl}`)
               createdCount++
             } catch (error: any) {
               console.error(`❌ [ASSOCIATE IMAGES] Error al crear relación para Attachment ID ${attachment.id}:`, error.message)
               // Continuar con el siguiente attachment
             }
           } else {
-            console.log(`⏭️ [ASSOCIATE IMAGES] Relación ya existe: Attachment ID ${attachment.id} -> Template ID ${templateId}`)
+            console.log(`⏭️ [ASSOCIATE IMAGES] Relación ya existe:`)
+            console.log(`   - Template ID: ${templateId}`)
+            console.log(`   - Attachment ID: ${attachment.id}`)
+            console.log(`   - Archivo: ${attachment.fileName || attachment.name || 'N/A'}`)
+            console.log(`   - Ruta: ${attachment.path || 'N/A'}`)
             skippedCount++
           }
         } else {

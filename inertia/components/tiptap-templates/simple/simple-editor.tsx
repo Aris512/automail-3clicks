@@ -226,7 +226,7 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
       Subscript,
       Selection,
       ImageUploadNode.configure({
-        accept: "image/*,application/pdf,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel",
+        accept: "image/*,application/pdf,.txt,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.rar,application/x-rar-compressed,.zip,application/zip,application/x-zip-compressed,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel",
         maxSize: MAX_FILE_SIZE,
         limit: 10,
         upload: handleImageUpload,

@@ -585,13 +585,15 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
           // Detectar si es imagen
           const isImage = fileType.startsWith('image/')
           
-          // Detectar si es un archivo adjunto (PDF, Word, texto, RAR, Excel)
+          // Detectar si es un archivo adjunto (PDF, Word, texto, RAR, ZIP, Excel)
           const isAttachment = 
             fileType === 'application/pdf' ||
             fileType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
             fileType === 'text/plain' ||
             fileType === 'application/x-rar-compressed' ||
             fileType === 'application/x-rar' ||
+            fileType === 'application/zip' ||
+            fileType === 'application/x-zip-compressed' ||
             fileType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
             fileType === 'application/vnd.ms-excel' ||
             fileType === 'application/excel' ||
@@ -599,6 +601,7 @@ export const ImageUploadNode: React.FC<NodeViewProps> = (props) => {
             file.name.toLowerCase().endsWith('.docx') ||
             file.name.toLowerCase().endsWith('.txt') ||
             file.name.toLowerCase().endsWith('.rar') ||
+            file.name.toLowerCase().endsWith('.zip') ||
             file.name.toLowerCase().endsWith('.xlsx') ||
             file.name.toLowerCase().endsWith('.xls')
           

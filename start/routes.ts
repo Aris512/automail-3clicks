@@ -353,6 +353,7 @@ router.get('/uploads/attachments/:tenantId/:fileName', async ({ params, response
       '.webp': 'image/webp',
       '.pdf': 'application/pdf',
       '.rar': 'application/x-rar-compressed',
+      '.zip': 'application/zip',
       '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       '.xls': 'application/vnd.ms-excel',
       '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

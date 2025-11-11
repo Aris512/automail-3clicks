@@ -33,7 +33,7 @@ export default class AttachmentsController {
       
       file = request.file('file', {
         size: '20mb',
-        extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'docx', 'rar', 'xlsx', 'xls']
+        extnames: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'txt', 'docx', 'rar', 'zip', 'xlsx', 'xls']
       })
       
       // ⚠️ CRÍTICO: Verificar que el archivo existe

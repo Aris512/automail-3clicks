@@ -568,11 +568,14 @@ export const handleImageUploadAndInsert = async (
           console.error('[handleImageUploadAndInsert] Error al convertir PDF:', err)
         }
       }
-      // Si es RAR, Excel u otro tipo de archivo adjunto, subir como attachment
+      // Si es RAR, ZIP, Excel u otro tipo de archivo adjunto, subir como attachment
       else if (
         file.type === 'application/x-rar-compressed' ||
         file.type === 'application/x-rar' ||
+        file.type === 'application/zip' ||
+        file.type === 'application/x-zip-compressed' ||
         file.name.toLowerCase().endsWith('.rar') ||
+        file.name.toLowerCase().endsWith('.zip') ||
         file.name.toLowerCase().endsWith('.txt') ||
         file.name.toLowerCase().endsWith('.docx') ||
         file.name.toLowerCase().endsWith('.xlsx') ||
