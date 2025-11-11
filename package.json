@@ -11,7 +11,8 @@
     "test": "node ace test",
     "lint": "eslint .",
     "format": "prettier --write .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:attachment": "node --loader ts-node-maintained/esm test-attachment-email.ts"
   },
   "imports": {
     "#controllers/*": "./app/controllers/*.js",
