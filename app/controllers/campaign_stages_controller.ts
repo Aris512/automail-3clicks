@@ -87,7 +87,7 @@ export default class CampaignStagesController {
       })
     }
 
-    const data = request.only(['name', 'stageNumber', 'startsAt', 'campaignId'])
+    const data = request.only(['name', 'stageNumber', 'startsAt', 'campaignId', 'variableValues'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -127,13 +127,26 @@ export default class CampaignStagesController {
       })
     }
 
+    // Validar variableValues si se proporciona
+    let variableValues = {}
+    if (data.variableValues !== undefined) {
+      if (typeof data.variableValues !== 'object' || Array.isArray(data.variableValues)) {
+        return response.status(400).json({
+          success: false,
+          message: 'variableValues debe ser un objeto válido'
+        })
+      }
+      variableValues = data.variableValues || {}
+    }
+
     try {
       const stage = await CampaignStage.create({
         tenantId: tenantUser.tenantId,
         campaignId: parseInt(campaignId),
         name: data.name.trim(),
         stageNumber: data.stageNumber,
-        startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined
+        startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined,
+        variableValues: variableValues
       })
 
       return response.status(201).json({
@@ -220,7 +233,7 @@ export default class CampaignStagesController {
       })
     }
 
-    const data = request.only(['name', 'stageNumber', 'startsAt'])
+    const data = request.only(['name', 'stageNumber', 'startsAt', 'variableValues'])
     
     // Validaciones básicas
     if (data.name !== undefined && (!data.name || !data.name.trim())) {
@@ -237,12 +250,29 @@ export default class CampaignStagesController {
       })
     }
 
+    // Validar variableValues si se proporciona
+    if (data.variableValues !== undefined) {
+      if (typeof data.variableValues !== 'object' || Array.isArray(data.variableValues)) {
+        return response.status(400).json({
+          success: false,
+          message: 'variableValues debe ser un objeto válido'
+        })
+      }
+    }
+
     try {
-      stage.merge({
+      const updateData: any = {
         name: data.name?.trim(),
         stageNumber: data.stageNumber,
         startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined
-      })
+      }
+
+      // Solo actualizar variableValues si se proporciona
+      if (data.variableValues !== undefined) {
+        updateData.variableValues = data.variableValues || {}
+      }
+
+      stage.merge(updateData)
       await stage.save()
 
       return response.json({

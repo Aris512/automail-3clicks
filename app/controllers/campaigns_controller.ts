@@ -58,7 +58,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds'])
+    const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds', 'variableValues'])
     
     // Validaciones básicas
     if (!data.name || !data.name.trim()) {
@@ -76,6 +76,18 @@ export default class CampaignsController {
       })
     }
 
+    // Validar variableValues si se proporciona
+    let variableValues = {}
+    if (data.variableValues !== undefined) {
+      if (typeof data.variableValues !== 'object' || Array.isArray(data.variableValues)) {
+        return response.status(400).json({
+          success: false,
+          message: 'variableValues debe ser un objeto válido'
+        })
+      }
+      variableValues = data.variableValues || {}
+    }
+
     try {
       const campaign = await Campaign.create({
         tenantId: tenantUser.tenantId,
@@ -83,7 +95,8 @@ export default class CampaignsController {
         name: data.name.trim(),
         description: data.description?.trim(),
         status: data.status || 'active',
-        emailSetupId: data.emailSetupId || null
+        emailSetupId: data.emailSetupId || null,
+        variableValues: variableValues
       })
 
       // Asociar listas si se proporcionaron
@@ -196,7 +209,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds'])
+    const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds', 'variableValues'])
     
     // Validaciones básicas
     if (data.name !== undefined && (!data.name || !data.name.trim())) {
@@ -214,13 +227,30 @@ export default class CampaignsController {
       })
     }
 
+    // Validar variableValues si se proporciona
+    if (data.variableValues !== undefined) {
+      if (typeof data.variableValues !== 'object' || Array.isArray(data.variableValues)) {
+        return response.status(400).json({
+          success: false,
+          message: 'variableValues debe ser un objeto válido'
+        })
+      }
+    }
+
     try {
-      campaign.merge({
+      const updateData: any = {
         name: data.name?.trim(),
         description: data.description?.trim(),
         status: data.status,
         emailSetupId: data.emailSetupId !== undefined ? data.emailSetupId : campaign.emailSetupId
-      })
+      }
+
+      // Solo actualizar variableValues si se proporciona
+      if (data.variableValues !== undefined) {
+        updateData.variableValues = data.variableValues || {}
+      }
+
+      campaign.merge(updateData)
       await campaign.save()
 
       // Actualizar relaciones con listas si se proporcionaron

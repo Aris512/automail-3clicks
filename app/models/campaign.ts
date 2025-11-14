@@ -29,6 +29,23 @@ export default class Campaign extends BaseModel {
   @column()
   declare status: 'active' | 'paused' | 'completed'
 
+  @column({ 
+    columnName: 'variable_values',
+    serializeAs: 'variableValues',
+    prepare: (value: any) => JSON.stringify(value || {}),
+    consume: (value: any) => {
+      if (typeof value === 'string') {
+        try {
+          return JSON.parse(value)
+        } catch {
+          return {}
+        }
+      }
+      return value || {}
+    }
+  })
+  declare variableValues: Record<string, string>
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

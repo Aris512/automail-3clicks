@@ -23,6 +23,7 @@ interface Template {
   name: string
   subject: string
   bodyMarkdown: string
+  availableVariables?: string[]
   active: boolean
   createdAt: string
   updatedAt: string
@@ -102,9 +103,11 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     name: '',
     subject: '',
     content: '',
+    availableVariables: [] as string[],
     active: true
   })
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null)
+  const [newVariableName, setNewVariableName] = useState('')
 
   // Función helper para obtener el token CSRF
   const getCsrfToken = () => {
@@ -416,6 +419,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
           name: templateFormData.name,
           subject: templateFormData.subject,
           bodyMarkdown: templateFormData.content,
+          availableVariables: templateFormData.availableVariables,
           active: templateFormData.active
         })
       })
@@ -514,6 +518,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       name: template.name,
       subject: template.subject,
       content: template.bodyMarkdown,
+      availableVariables: template.availableVariables || [],
       active: template.active
     })
     setEditingTemplateId(template.id)
@@ -605,10 +610,52 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       name: '',
       subject: '',
       content: '',
+      availableVariables: [],
       active: true
     })
+    setNewVariableName('')
     setEditingTemplateId(null)
     setShowTemplateForm(false)
+  }
+
+  // Verificar si la plantilla está asociada a alguna etapa
+  const isTemplateAssociatedWithStage = (templateId: number | null): boolean => {
+    if (!templateId) return false
+    return stages.some(stage => 
+      stage.templates?.some(t => t.id === templateId)
+    )
+  }
+
+  // Agregar variable personalizada
+  const handleAddVariable = () => {
+    const trimmed = newVariableName.trim()
+    if (!trimmed) return
+    
+    // Validar formato: solo letras, números y guiones bajos
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+      showError('Formato inválido', 'El nombre de la variable solo puede contener letras, números y guiones bajos, y debe empezar con letra o guión bajo')
+      return
+    }
+
+    // Verificar que no exista
+    if (templateFormData.availableVariables.includes(trimmed)) {
+      showError('Variable duplicada', 'Esta variable ya existe')
+      return
+    }
+
+    setTemplateFormData({
+      ...templateFormData,
+      availableVariables: [...templateFormData.availableVariables, trimmed]
+    })
+    setNewVariableName('')
+  }
+
+  // Eliminar variable personalizada
+  const handleRemoveVariable = (variableName: string) => {
+    setTemplateFormData({
+      ...templateFormData,
+      availableVariables: templateFormData.availableVariables.filter(v => v !== variableName)
+    })
   }
 
   return (
@@ -1071,6 +1118,81 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                       />
                     </div>
                   </div>
+
+                  {/* Sección de Variables Disponibles - Solo si la plantilla está asociada a alguna etapa */}
+                  {isTemplateAssociatedWithStage(editingTemplateId) && (
+                    <div className="border rounded-lg p-4 bg-gray-50">
+                      <Label className="text-base font-semibold mb-3 block">Variables Disponibles</Label>
+                      
+                      {/* Variables del contacto (siempre disponibles) */}
+                      <div className="mb-4">
+                        <p className="text-sm font-medium text-gray-700 mb-2">Variables del Contacto (siempre disponibles):</p>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm font-mono">
+                            {'{{nombre_contacto}}'}
+                          </span>
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm font-mono">
+                            {'{{email_contacto}}'}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Variables personalizadas */}
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Variables Personalizadas:</p>
+                        
+                        {/* Lista de variables personalizadas */}
+                        {templateFormData.availableVariables.length > 0 && (
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            {templateFormData.availableVariables.map((variable) => (
+                              <div
+                                key={variable}
+                                className="flex items-center gap-1 px-3 py-1 bg-green-100 text-green-800 rounded-md text-sm font-mono"
+                              >
+                                <span>{`{{${variable}}}`}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveVariable(variable)}
+                                  className="ml-1 text-green-600 hover:text-green-800"
+                                  title="Eliminar variable"
+                                >
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Input para agregar nueva variable */}
+                        <div className="flex gap-2">
+                          <Input
+                            placeholder="Ej: nombre_producto"
+                            value={newVariableName}
+                            onChange={(e) => setNewVariableName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault()
+                                handleAddVariable()
+                              }
+                            }}
+                            className="flex-1"
+                          />
+                          <Button
+                            type="button"
+                            onClick={handleAddVariable}
+                            variant="outline"
+                            size="sm"
+                          >
+                            <Plus className="h-4 w-4 mr-1" />
+                            Agregar
+                          </Button>
+                        </div>
+                        <p className="text-xs text-gray-500 mt-2">
+                          Las variables personalizadas estarán disponibles para completar valores en las campañas y etapas.
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">

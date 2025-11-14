@@ -422,7 +422,8 @@ export default class CampaignEmailService {
               // }
 
               // Renderizar la plantilla con los datos del suscriptor
-              const rendered = await this.renderService.render(template, subscriber)
+              // Pasar stage y campaign para obtener valores de variables en cascada
+              const rendered = await this.renderService.render(template, subscriber, stage, campaign)
 
               // El asunto ya viene procesado con el nombre del suscriptor desde TemplateRenderService
               const finalSubject = rendered.subject
@@ -524,8 +525,9 @@ export default class CampaignEmailService {
                 messageId: info.messageId || null,
               })
 
-              // Actualizar lastSentAt del suscriptor
+              // Actualizar lastSentAt y current_stage del suscriptor
               subscriber.lastSentAt = DateTime.now()
+              subscriber.currentStage = 'active'
               await subscriber.save()
 
               sentCount++

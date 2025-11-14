@@ -1,56 +1,10 @@
 import Mustache from 'mustache'
 import Template from '#models/template'
 import Subscriber from '#models/subscriber'
-import CampaignStageTemplate from '#models/campaign_stage_template'
+import CampaignStage from '#models/campaign_stage'
+import Campaign from '#models/campaign'
 
 export default class TemplateRenderService {
-  /**
-   * Procesa el placeholder "@lista de contactos" según el contexto de la plantilla
-   * - Si la plantilla está asociada a una etapa/campaña con listas: reemplaza con {{nombre}}
-   * - Si no hay contexto: elimina el placeholder silenciosamente
-   * @param content - El contenido a procesar
-   * @param template - La plantilla
-   * @returns El contenido procesado
-   */
-  private async processPlaceholderAt(content: string, template: Template): Promise<string> {
-    // Verificar si el contenido contiene "@lista de contactos"
-    if (!content.includes('@lista de contactos')) {
-      return content
-    }
-
-    // Buscar todas las asociaciones de la plantilla con etapas
-    const stageTemplates = await CampaignStageTemplate.query()
-      .where('templatesId', template.id)
-      .preload('campaignStage', (query) => {
-        query.preload('campaign', (campaignQuery) => {
-          campaignQuery.preload('lists')
-        })
-      })
-
-    // Si no está asociada a ninguna etapa, eliminar el placeholder
-    if (stageTemplates.length === 0) {
-      return content.replace(/@lista de contactos/g, '')
-    }
-
-    // Verificar si al menos una etapa tiene una campaña con listas asociadas
-    const hasCampaignWithLists = stageTemplates.some((stageTemplate) => {
-      const stage = stageTemplate.campaignStage
-      if (!stage || !stage.campaign) {
-        return false
-      }
-      const campaign = stage.campaign
-      return campaign.lists && campaign.lists.length > 0
-    })
-
-    // Si tiene al menos una campaña con listas, reemplazar con {{nombre}}
-    if (hasCampaignWithLists) {
-      return content.replace(/@lista de contactos/g, '{{nombre}}')
-    }
-
-    // Si no tiene campañas con listas, eliminar el placeholder
-    return content.replace(/@lista de contactos/g, '')
-  }
-
   /**
    * Verifica si el nombre del suscriptor ya está presente en el asunto
    * @param subject - El asunto a verificar
@@ -111,74 +65,63 @@ export default class TemplateRenderService {
       .join(' ')
   }
 
+
   /**
-   * Determina el conector apropiado para agregar el nombre del suscriptor al asunto
-   * @param subject - El asunto a analizar
-   * @returns El conector apropiado (con espacio si es necesario)
+   * Obtiene los valores de variables personalizadas en cascada (etapa > campaña)
+   * @param template - La plantilla con las variables disponibles
+   * @param stage - La etapa de la campaña (opcional)
+   * @param campaign - La campaña (opcional)
+   * @returns Objeto con los valores de variables personalizadas
    */
-  private determineConnector(subject: string): string {
-    const trimmed = subject.trim().toLowerCase()
+  private getVariableValues(
+    template: Template,
+    stage?: CampaignStage,
+    campaign?: Campaign
+  ): Record<string, string> {
+    // Obtener variables personalizadas del template
+    const availableVariables = template.availableVariables || []
     
-    // Si está vacío, no necesita conector
-    if (!trimmed) return ''
+    if (!Array.isArray(availableVariables) || availableVariables.length === 0) {
+      return {}
+    }
+
+    // Inicializar valores vacíos para todas las variables personalizadas
+    const variableValues: Record<string, string> = {}
     
-    // Detectar saludos directos
-    const greetings = ['hola', 'bienvenido', 'bienvenida', 'saludos', 'buenos días', 'buenas tardes', 'buenas noches']
-    const firstWord = trimmed.split(/\s+/)[0]
-    if (greetings.includes(firstWord)) {
-      return ', '
+    // Primero, obtener valores de la campaña (si existe)
+    const campaignValues = campaign?.variableValues || {}
+    
+    // Luego, obtener valores de la etapa (si existe) - estos sobrescriben los de campaña
+    const stageValues = stage?.variableValues || {}
+    
+    // Combinar: valores de etapa sobrescriben valores de campaña
+    // Solo incluir variables que están definidas en availableVariables
+    for (const varName of availableVariables) {
+      if (typeof varName === 'string' && varName.trim()) {
+        const varKey = varName.trim()
+        // Prioridad: etapa > campaña > vacío
+        variableValues[varKey] = stageValues[varKey] || campaignValues[varKey] || ''
+      }
     }
     
-    // Detectar exclamaciones de saludo
-    if (trimmed.match(/^[¡!]?\s*(hola|bienvenido|bienvenida)/i)) {
-      return ' '
-    }
-    
-    // Detectar frases que terminan con "de" (ej: "test de imagenes")
-    if (trimmed.match(/\bde\s+\w+$/)) {
-      return ' para '
-    }
-    
-    // Detectar frases que terminan con "para" (ya tiene conector)
-    if (trimmed.match(/\bpara\s*$/)) {
-      return ' '
-    }
-    
-    // Detectar frases que terminan con "con" (ya tiene conector)
-    if (trimmed.match(/\bcon\s*$/)) {
-      return ' '
-    }
-    
-    // Detectar frases que terminan con "sobre", "acerca de"
-    if (trimmed.match(/\b(sobre|acerca de)\s+\w+$/)) {
-      return ' para '
-    }
-    
-    // Detectar frases que terminan con verbos en infinitivo (ej: "enviar correo")
-    if (trimmed.match(/\b(ar|er|ir)\s*$/)) {
-      return ' para '
-    }
-    
-    // Detectar frases que terminan con sustantivos (patrón común: sustantivo + "para")
-    // Si la última palabra es un sustantivo común, usar "para"
-    const commonNouns = ['información', 'noticia', 'actualización', 'recordatorio', 'invitación', 'promoción', 'oferta']
-    const lastWord = trimmed.split(/\s+/).pop() || ''
-    if (commonNouns.some(noun => lastWord.includes(noun))) {
-      return ' para '
-    }
-    
-    // Por defecto, usar "para" para la mayoría de casos
-    return ' para '
+    return variableValues
   }
 
   /**
    * Renderiza una plantilla con los datos de un suscriptor
    * @param template - La plantilla a renderizar
    * @param subscriber - El suscriptor con los datos para el renderizado
+   * @param stage - La etapa de la campaña (opcional, para obtener valores de variables)
+   * @param campaign - La campaña (opcional, para obtener valores de variables)
    * @returns Objeto con el subject y body renderizados
    * @throws Error si el tenantId no coincide
    */
-  async render(template: Template, subscriber: Subscriber): Promise<{
+  async render(
+    template: Template,
+    subscriber: Subscriber,
+    stage?: CampaignStage,
+    campaign?: Campaign
+  ): Promise<{
     subject: string
     body: string
   }> {
@@ -189,16 +132,18 @@ export default class TemplateRenderService {
       )
     }
 
-    // Procesar el placeholder "@lista de contactos" antes de renderizar
-    const processedBody = await this.processPlaceholderAt(template.bodyMarkdown, template)
-    const processedSubject = await this.processPlaceholderAt(template.subject, template)
+    // Obtener valores de variables personalizadas en cascada
+    const customVariableValues = this.getVariableValues(template, stage, campaign)
 
     // Preparar los datos del suscriptor para el renderizado
     // Mustache escapa automáticamente HTML en variables normales, pero para HTML/Markdown
     // usamos triple mustaches {{{ }}} para renderizar sin escape
     // Soporta tanto {{nombre}} como {{subscriber.nombre}} para compatibilidad
     const subscriberData = {
-      nombre: subscriber.name || '', // Para {{nombre}}
+      // Variables del contacto (siempre disponibles)
+      nombre_contacto: subscriber.name || '', // Para {{nombre_contacto}}
+      email_contacto: subscriber.email || '', // Para {{email_contacto}}
+      nombre: subscriber.name || '', // Para {{nombre}} (compatibilidad)
       name: subscriber.name || '', // Para {{name}} (compatibilidad)
       subscriber: {
         nombre: subscriber.name || '', // Para {{subscriber.nombre}}
@@ -208,12 +153,14 @@ export default class TemplateRenderService {
       },
       email: subscriber.email || '',
       description: subscriber.description || '',
+      // Variables personalizadas con sus valores
+      ...customVariableValues,
     }
 
     // Renderizar el subject (texto plano, se escapa automáticamente)
-    let renderedSubject = Mustache.render(processedSubject, subscriberData)
+    let renderedSubject = Mustache.render(template.subject, subscriberData)
 
-    // Agregar automáticamente el nombre del suscriptor al final del asunto
+    // Agregar automáticamente el nombre del suscriptor al inicio del asunto (formato: "nombre" + "asunto")
     const subscriberName = subscriber.name || ''
     if (subscriberName) {
       // Verificar si el nombre ya está presente en el asunto para evitar redundancia
@@ -234,17 +181,16 @@ export default class TemplateRenderService {
           const match = trimmedSubject.match(punctuationRegex)
           
           if (match) {
-            // Si hay signos de puntuación al final, insertar el nombre antes de ellos
+            // Si hay signos de puntuación al final, mantenerlos al final
             const punctuation = match[1]
             const subjectWithoutPunctuation = trimmedSubject.slice(0, -punctuation.length).trim()
             
-            // Determinar el conector apropiado
-            const connector = this.determineConnector(subjectWithoutPunctuation)
-            renderedSubject = `${subjectWithoutPunctuation}${connector}${capitalizedName}${punctuation}`
+            // Formato: "nombre" + "asunto" + "signos de puntuación"
+            // Usar coma como separador cuando hay signos de puntuación
+            renderedSubject = `${capitalizedName}, ${subjectWithoutPunctuation}${punctuation}`
           } else {
-            // Si no hay signos de puntuación, determinar el conector apropiado
-            const connector = this.determineConnector(trimmedSubject)
-            renderedSubject = `${trimmedSubject}${connector}${capitalizedName}`
+            // Si no hay signos de puntuación, usar formato simple: "nombre" + "asunto"
+            renderedSubject = `${capitalizedName}, ${trimmedSubject}`
           }
         } else {
           // Si el asunto está vacío, solo mostrar el nombre capitalizado
@@ -256,7 +202,7 @@ export default class TemplateRenderService {
     // Renderizar el body_markdown
     // Si el template usa {{variable}} escapa HTML, si usa {{{variable}}} no escapa
     // Para emails HTML, normalmente queremos que el contenido se mantenga como HTML
-    const renderedBody = Mustache.render(processedBody, subscriberData)
+    const renderedBody = Mustache.render(template.bodyMarkdown, subscriberData)
 
     return {
       subject: renderedSubject,

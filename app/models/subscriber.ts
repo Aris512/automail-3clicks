@@ -24,6 +24,9 @@ export default class Subscriber extends BaseModel {
   @column()
   declare status: 'active' | 'inactive' | 'archived' | 'unsubscribed'
 
+  @column()
+  declare currentStage?: string
+
   @column.dateTime()
   declare lastSentAt?: DateTime
 
