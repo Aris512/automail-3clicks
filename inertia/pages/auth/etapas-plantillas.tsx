@@ -37,6 +37,7 @@ interface CampaignStage {
   campaign?: {
     id: number
     name: string
+    status?: 'active' | 'paused' | 'completed'
   }
   templates?: Template[]
   createdAt: string
@@ -47,7 +48,7 @@ interface Campaign {
   id: number
   name: string
   description?: string
-  status: string
+  status: 'active' | 'paused' | 'completed'
 }
 
 interface EtapasPlantillasProps {
@@ -285,6 +286,36 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       showError('Error de conexión', 'No se pudo actualizar la lista de etapas')
     } finally {
       setIsRefreshingStages(false)
+    }
+  }
+
+  // Función para obtener el estilo del estado de la campaña
+  const getCampaignStatusStyle = (status: 'active' | 'paused' | 'completed') => {
+    switch (status) {
+      case 'active':
+        return {
+          bg: 'bg-green-100',
+          text: 'text-green-800',
+          label: 'Activa'
+        }
+      case 'paused':
+        return {
+          bg: 'bg-yellow-100',
+          text: 'text-yellow-800',
+          label: 'En Pausa'
+        }
+      case 'completed':
+        return {
+          bg: 'bg-gray-100',
+          text: 'text-gray-800',
+          label: 'Completada'
+        }
+      default:
+        return {
+          bg: 'bg-gray-100',
+          text: 'text-gray-800',
+          label: 'Desconocido'
+        }
     }
   }
 
@@ -764,9 +795,16 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                           </p>
                           <div className="flex flex-wrap gap-2 mt-2">
                             {stage.campaign && (
-                              <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
-                                Campaña: {stage.campaign.name}
-                              </span>
+                              <>
+                                <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                  Campaña: {stage.campaign.name}
+                                </span>
+                                {stage.campaign.status && (
+                                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-medium ${getCampaignStatusStyle(stage.campaign.status).bg} ${getCampaignStatusStyle(stage.campaign.status).text}`}>
+                                    {getCampaignStatusStyle(stage.campaign.status).label}
+                                  </span>
+                                )}
+                              </>
                             )}
                             {stage.startsAt && (
                               <span className="inline-flex items-center px-3 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">

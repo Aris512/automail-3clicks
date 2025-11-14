@@ -424,8 +424,8 @@ export default class CampaignEmailService {
               // Renderizar la plantilla con los datos del suscriptor
               const rendered = await this.renderService.render(template, subscriber)
 
-              // Construir el asunto final con prefijo personalizado: "Hola {nombre}, {asunto_plantilla}"
-              const finalSubject = `Hola ${subscriber.name || 'Usuario'}, ${rendered.subject}`
+              // El asunto ya viene procesado con el nombre del suscriptor desde TemplateRenderService
+              const finalSubject = rendered.subject
 
               // Procesar el HTML para convertir rutas relativas de imágenes a URLs absolutas
               const { html: processedHtml, attachments } = await HtmlEmailProcessor.processHtmlForEmail(rendered.body)

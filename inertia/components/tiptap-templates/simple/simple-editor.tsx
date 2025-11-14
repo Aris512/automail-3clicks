@@ -58,11 +58,13 @@ import { UndoRedoButton } from "~/components/tiptap/tiptap-ui/undo-redo-button"
 import { ArrowLeftIcon } from "~/components/tiptap/tiptap-icons/arrow-left-icon"
 import { HighlighterIcon } from "~/components/tiptap/tiptap-icons/highlighter-icon"
 import { LinkIcon } from "~/components/tiptap/tiptap-icons/link-icon"
+import { AtIcon } from "~/components/tiptap/tiptap-icons/at-icon"
 
 // --- Hooks ---
 import { useIsMobile } from "~/hooks/use-mobile"
 import { useWindowSize } from "~/hooks/use-window-size"
 import { useCursorVisibility } from "~/hooks/use-cursor-visibility"
+import { useTiptapEditor } from "~/hooks/use-tiptap-editor"
 
 // --- Lib ---
 import { ImageUploadNode } from "~/components/tiptap/tiptap-node/image-upload-node/image-upload-node-extension"
@@ -77,6 +79,56 @@ interface SimpleEditorProps {
   onChange?: (content: string) => void
   placeholder?: string
   className?: string
+}
+
+const ContactListButton = () => {
+  const { editor } = useTiptapEditor()
+
+  const handleInsertContactList = () => {
+    if (!editor) return
+    
+    const text = "@lista de contactos"
+    const yellowHighlightColor = "var(--tt-color-highlight-yellow)"
+    
+    // Obtener la posición actual del cursor
+    const { from } = editor.state.selection
+    
+    // Insertar el texto
+    editor
+      .chain()
+      .focus()
+      .insertContent(text)
+      .run()
+    
+    // Seleccionar el texto recién insertado y aplicar highlight amarillo
+    setTimeout(() => {
+      editor
+        .chain()
+        .setTextSelection({ from, to: from + text.length })
+        .setMark("highlight", { color: yellowHighlightColor })
+        .run()
+      
+      // Mover el cursor al final del texto insertado
+      editor
+        .chain()
+        .setTextSelection(from + text.length)
+        .run()
+    }, 0)
+  }
+
+  return (
+    <Button
+      type="button"
+      data-style="ghost"
+      role="button"
+      tabIndex={-1}
+      aria-label="Enlazar contactos"
+      tooltip="Enlazar contactos"
+      onClick={handleInsertContactList}
+    >
+      <AtIcon className="tiptap-button-icon" />
+    </Button>
+  )
 }
 
 const MainToolbarContent = ({
@@ -144,7 +196,8 @@ const MainToolbarContent = ({
       <ToolbarSeparator />
 
       <ToolbarGroup>
-        <ImageUploadButton text="Add" />  
+        <ImageUploadButton text="Add" />
+        <ContactListButton />
       </ToolbarGroup>
 
       <Spacer />
