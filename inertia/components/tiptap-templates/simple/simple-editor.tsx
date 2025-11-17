@@ -72,11 +72,18 @@ import { handleImageUpload, MAX_FILE_SIZE } from "~/lib/tiptap-utils"
 // --- Styles ---
 import "./simple-editor.scss"
 
+interface CustomVariable {
+  id: number
+  name: string
+  description?: string
+}
+
 interface SimpleEditorProps {
   content?: string
   onChange?: (content: string) => void
   placeholder?: string
   className?: string
+  customVariables?: CustomVariable[]
 }
 
 const MainToolbarContent = ({
@@ -181,7 +188,7 @@ const MobileToolbarContent = ({
   </>
 )
 
-export function SimpleEditor({ content: initialContent = "", onChange, placeholder, className }: SimpleEditorProps = {}) {
+export function SimpleEditor({ content: initialContent = "", onChange, placeholder, className, customVariables = [] }: SimpleEditorProps = {}) {
   const isMobile = useIsMobile()
   const { height } = useWindowSize()
   const [mobileView, setMobileView] = React.useState<
@@ -326,6 +333,16 @@ export function SimpleEditor({ content: initialContent = "", onChange, placehold
               >
                 {"{{email_contacto}}"}
               </Button>
+              {customVariables.map((variable) => (
+                <Button
+                  key={variable.id}
+                  onClick={() => insertVariable(`{{${variable.name}}}`)}
+                  tooltip={variable.description || `Insertar ${variable.name}`}
+                  aria-label={`Insertar ${variable.name}`}
+                >
+                  {`{{${variable.name}}}`}
+                </Button>
+              ))}
             </ToolbarGroup>
           </Toolbar>
         </div>

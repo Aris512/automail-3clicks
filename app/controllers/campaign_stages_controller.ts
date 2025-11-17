@@ -4,6 +4,8 @@ import Campaign from '#models/campaign'
 import TenantUser from '#models/tenant_user'
 import Template from '#models/template'
 import CampaignStageTemplate from '#models/campaign_stage_template'
+import CampaignCustomVariable from '#models/campaign_custom_variable'
+import CustomVariable from '#models/custom_variable'
 import { inject } from '@adonisjs/core'
 import { DateTime } from 'luxon'
 
@@ -127,16 +129,12 @@ export default class CampaignStagesController {
       })
     }
 
-    // Validar variableValues si se proporciona
-    let variableValues = {}
-    if (data.variableValues !== undefined) {
-      if (typeof data.variableValues !== 'object' || Array.isArray(data.variableValues)) {
-        return response.status(400).json({
-          success: false,
-          message: 'variableValues debe ser un objeto válido'
-        })
-      }
-      variableValues = data.variableValues || {}
+    // Validar customVariableValues si se proporciona
+    if (data.customVariableValues !== undefined && !Array.isArray(data.customVariableValues)) {
+      return response.status(400).json({
+        success: false,
+        message: 'customVariableValues debe ser un array'
+      })
     }
 
     try {
@@ -145,9 +143,40 @@ export default class CampaignStagesController {
         campaignId: parseInt(campaignId),
         name: data.name.trim(),
         stageNumber: data.stageNumber,
-        startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined,
-        variableValues: variableValues
+        startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined
       })
+
+      // Crear valores específicos de etapa si se proporcionaron
+      if (data.customVariableValues && Array.isArray(data.customVariableValues) && data.customVariableValues.length > 0) {
+        for (const varValue of data.customVariableValues) {
+          if (!varValue.customVarId || !varValue.valor) {
+            continue
+          }
+
+          // Verificar que la variable existe y pertenece a la campaign
+          const campaignVar = await CampaignCustomVariable.query()
+            .where('campaignId', parseInt(campaignId))
+            .where('customVarId', varValue.customVarId)
+            .whereNull('campaignStageId')
+            .first()
+
+          if (!campaignVar) {
+            continue // La variable no existe en la campaign
+          }
+
+          // Crear o actualizar el valor específico de la etapa
+          await CampaignCustomVariable.updateOrCreate(
+            {
+              customVarId: varValue.customVarId,
+              campaignId: parseInt(campaignId),
+              campaignStageId: stage.id
+            },
+            {
+              valor: varValue.valor.trim()
+            }
+          )
+        }
+      }
 
       return response.status(201).json({
         success: true,
@@ -196,6 +225,33 @@ export default class CampaignStagesController {
       })
     }
 
+    // Obtener variables heredadas de campaign (valores base)
+    const campaignVariables = await CampaignCustomVariable.query()
+      .where('campaignId', stage.campaignId)
+      .whereNull('campaignStageId')
+      .preload('customVariable')
+
+    // Obtener valores específicos de la etapa
+    const stageVariables = await CampaignCustomVariable.query()
+      .where('campaignId', stage.campaignId)
+      .where('campaignStageId', stage.id)
+      .preload('customVariable')
+
+    // Combinar: valores de etapa sobrescriben valores de campaign
+    const variablesWithValues = campaignVariables.map(cv => {
+      const stageVar = stageVariables.find(sv => sv.customVarId === cv.customVarId)
+      return {
+        id: cv.customVariable.id,
+        name: cv.customVariable.name,
+        description: cv.customVariable.description,
+        valor: stageVar ? stageVar.valor : cv.valor, // Prioridad: etapa > campaign
+        isOverridden: !!stageVar
+      }
+    })
+
+    // Agregar variables con valores al objeto stage
+    ;(stage as any).customVariablesWithValues = variablesWithValues
+
     return response.json({
       success: true,
       data: stage
@@ -233,7 +289,7 @@ export default class CampaignStagesController {
       })
     }
 
-    const data = request.only(['name', 'stageNumber', 'startsAt', 'variableValues'])
+    const data = request.only(['name', 'stageNumber', 'startsAt', 'customVariableValues'])
     
     // Validaciones básicas
     if (data.name !== undefined && (!data.name || !data.name.trim())) {
@@ -250,14 +306,12 @@ export default class CampaignStagesController {
       })
     }
 
-    // Validar variableValues si se proporciona
-    if (data.variableValues !== undefined) {
-      if (typeof data.variableValues !== 'object' || Array.isArray(data.variableValues)) {
-        return response.status(400).json({
-          success: false,
-          message: 'variableValues debe ser un objeto válido'
-        })
-      }
+    // Validar customVariableValues si se proporciona
+    if (data.customVariableValues !== undefined && !Array.isArray(data.customVariableValues)) {
+      return response.status(400).json({
+        success: false,
+        message: 'customVariableValues debe ser un array'
+      })
     }
 
     try {
@@ -267,13 +321,45 @@ export default class CampaignStagesController {
         startsAt: data.startsAt ? DateTime.fromISO(data.startsAt) : undefined
       }
 
-      // Solo actualizar variableValues si se proporciona
-      if (data.variableValues !== undefined) {
-        updateData.variableValues = data.variableValues || {}
-      }
-
       stage.merge(updateData)
       await stage.save()
+
+      // Actualizar valores específicos de etapa si se proporcionaron
+      if (data.customVariableValues !== undefined) {
+        // Eliminar todos los valores específicos de esta etapa
+        await CampaignCustomVariable.query()
+          .where('campaignId', stage.campaignId)
+          .where('campaignStageId', stage.id)
+          .delete()
+
+        // Crear nuevos valores si se proporcionaron
+        if (Array.isArray(data.customVariableValues) && data.customVariableValues.length > 0) {
+          for (const varValue of data.customVariableValues) {
+            if (!varValue.customVarId || !varValue.valor) {
+              continue
+            }
+
+            // Verificar que la variable existe y pertenece a la campaign
+            const campaignVar = await CampaignCustomVariable.query()
+              .where('campaignId', stage.campaignId)
+              .where('customVarId', varValue.customVarId)
+              .whereNull('campaignStageId')
+              .first()
+
+            if (!campaignVar) {
+              continue // La variable no existe en la campaign
+            }
+
+            // Crear el valor específico de la etapa
+            await CampaignCustomVariable.create({
+              customVarId: varValue.customVarId,
+              campaignId: stage.campaignId,
+              campaignStageId: stage.id,
+              valor: varValue.valor.trim()
+            })
+          }
+        }
+      }
 
       return response.json({
         success: true,

@@ -231,6 +231,10 @@ router.post('/campaigns', [CampaignsController, 'store']).use(middleware.auth())
 router.get('/campaigns/:id', [CampaignsController, 'show']).use(middleware.auth())
 router.put('/campaigns/:id', [CampaignsController, 'update']).use(middleware.auth())
 router.delete('/campaigns/:id', [CampaignsController, 'destroy']).use(middleware.auth())
+router.get('/campaigns/custom-variables/all', [CampaignsController, 'getCustomVariables']).use(middleware.auth())
+router.post('/campaigns/custom-variables', [CampaignsController, 'createCustomVariable']).use(middleware.auth())
+router.put('/campaigns/custom-variables/:id', [CampaignsController, 'updateCustomVariable']).use(middleware.auth())
+router.delete('/campaigns/custom-variables/:id', [CampaignsController, 'deleteCustomVariable']).use(middleware.auth())
 
 // Rutas para relaciones campaña-lista
 const CampaignListsController = () => import('#controllers/campaign_lists_controller')

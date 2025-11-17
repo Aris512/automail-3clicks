@@ -5,6 +5,7 @@ import User from './user.js'
 import CampaignStage from './campaign_stage.js'
 import EmailSetup from './email_setup.js'
 import List from './list.js'
+import CustomVariable from './custom_variable.js'
 import type { BelongsTo, HasMany, ManyToMany } from '@adonisjs/lucid/types/relations'
 
 export default class Campaign extends BaseModel {
@@ -28,23 +29,6 @@ export default class Campaign extends BaseModel {
 
   @column()
   declare status: 'active' | 'paused' | 'completed'
-
-  @column({ 
-    columnName: 'variable_values',
-    serializeAs: 'variableValues',
-    prepare: (value: any) => JSON.stringify(value || {}),
-    consume: (value: any) => {
-      if (typeof value === 'string') {
-        try {
-          return JSON.parse(value)
-        } catch {
-          return {}
-        }
-      }
-      return value || {}
-    }
-  })
-  declare variableValues: Record<string, string>
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
@@ -72,4 +56,15 @@ export default class Campaign extends BaseModel {
     pivotRelatedForeignKey: 'list_id',
   })
   declare lists: ManyToMany<typeof List>
+
+  /**
+   * Relación many-to-many con CustomVariable a través de CampaignCustomVariable
+   */
+  @manyToMany(() => CustomVariable, {
+    pivotTable: 'campaign_custom_variables',
+    pivotForeignKey: 'campaign_id',
+    pivotRelatedForeignKey: 'custom_var_id',
+    pivotTimestamps: true,
+  })
+  declare customVariables: ManyToMany<typeof CustomVariable>
 }

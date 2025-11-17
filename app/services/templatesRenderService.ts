@@ -3,6 +3,8 @@ import Template from '#models/template'
 import Subscriber from '#models/subscriber'
 import CampaignStage from '#models/campaign_stage'
 import Campaign from '#models/campaign'
+import TemplateCustomVariable from '#models/template_custom_variable'
+import CampaignCustomVariable from '#models/campaign_custom_variable'
 
 export default class TemplateRenderService {
   /**
@@ -73,35 +75,67 @@ export default class TemplateRenderService {
    * @param campaign - La campaña (opcional)
    * @returns Objeto con los valores de variables personalizadas
    */
-  private getVariableValues(
+  private async getVariableValues(
     template: Template,
     stage?: CampaignStage,
     campaign?: Campaign
-  ): Record<string, string> {
-    // Obtener variables personalizadas del template
-    const availableVariables = template.availableVariables || []
+  ): Promise<Record<string, string>> {
+    // Obtener variables personalizadas del template desde template_custom_variables
+    const templateVars = await TemplateCustomVariable.query()
+      .where('templateId', template.id)
+      .preload('customVariable')
     
-    if (!Array.isArray(availableVariables) || availableVariables.length === 0) {
+    if (!templateVars || templateVars.length === 0) {
       return {}
     }
 
     // Inicializar valores vacíos para todas las variables personalizadas
     const variableValues: Record<string, string> = {}
     
-    // Primero, obtener valores de la campaña (si existe)
-    const campaignValues = campaign?.variableValues || {}
-    
-    // Luego, obtener valores de la etapa (si existe) - estos sobrescriben los de campaña
-    const stageValues = stage?.variableValues || {}
-    
-    // Combinar: valores de etapa sobrescriben valores de campaña
-    // Solo incluir variables que están definidas en availableVariables
-    for (const varName of availableVariables) {
-      if (typeof varName === 'string' && varName.trim()) {
-        const varKey = varName.trim()
-        // Prioridad: etapa > campaña > vacío
-        variableValues[varKey] = stageValues[varKey] || campaignValues[varKey] || ''
+    // Si no hay campaign, retornar valores vacíos
+    if (!campaign) {
+      for (const tv of templateVars) {
+        variableValues[tv.customVariable.name] = ''
       }
+      return variableValues
+    }
+
+    // Obtener valores de campaign (donde campaign_stage_id es null)
+    const campaignVars = await CampaignCustomVariable.query()
+      .where('campaignId', campaign.id)
+      .whereNull('campaignStageId')
+      .preload('customVariable')
+
+    // Obtener valores de stage si existe (donde campaign_stage_id = stage.id)
+    let stageVars: CampaignCustomVariable[] = []
+    if (stage) {
+      stageVars = await CampaignCustomVariable.query()
+        .where('campaignId', campaign.id)
+        .where('campaignStageId', stage.id)
+        .preload('customVariable')
+    }
+
+    // Combinar: valores de etapa sobrescriben valores de campaña
+    // Solo incluir variables que están asociadas al template
+    for (const templateVar of templateVars) {
+      const varName = templateVar.customVariable.name
+      
+      // Buscar valor en stage (prioridad más alta)
+      const stageVar = stageVars.find(sv => sv.customVarId === templateVar.customVarId)
+      if (stageVar && stageVar.valor) {
+        variableValues[varName] = stageVar.valor
+        continue
+      }
+
+      // Buscar valor en campaign
+      const campaignVar = campaignVars.find((cv: CampaignCustomVariable) => cv.customVarId === templateVar.customVarId)
+      if (campaignVar && campaignVar.valor) {
+        variableValues[varName] = campaignVar.valor
+        continue
+      }
+
+      // Si no hay valor, usar vacío
+      variableValues[varName] = ''
     }
     
     return variableValues
@@ -133,7 +167,7 @@ export default class TemplateRenderService {
     }
 
     // Obtener valores de variables personalizadas en cascada
-    const customVariableValues = this.getVariableValues(template, stage, campaign)
+    const customVariableValues = await this.getVariableValues(template, stage, campaign)
 
     // Preparar los datos del suscriptor para el renderizado
     // Mustache escapa automáticamente HTML en variables normales, pero para HTML/Markdown

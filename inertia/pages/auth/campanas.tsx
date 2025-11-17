@@ -25,6 +25,13 @@ interface User {
   email: string
 }
 
+interface CustomVariable {
+  id?: number
+  name: string
+  description?: string
+  valor?: string
+}
+
 interface Campaign {
   id: number
   name: string
@@ -37,6 +44,7 @@ interface Campaign {
   emailSetupId?: number | null
   campaignStages?: any[]
   lists?: List[] | any[]
+  customVariablesWithValues?: CustomVariable[]
   user?: {
     id: number
     fullName: string
@@ -94,9 +102,16 @@ export default function Campanas({ user }: CampanasProps) {
     description: '',
     status: 'active' as 'active' | 'paused' | 'completed',
     emailSetupId: null as number | null,
-    listIds: [] as number[]
+    listIds: [] as number[],
+    customVariables: [] as CustomVariable[]
   })
   const [isSaving, setIsSaving] = useState(false)
+  const [allCustomVariables, setAllCustomVariables] = useState<CustomVariable[]>([])
+  const [editingVariableId, setEditingVariableId] = useState<number | null>(null)
+  const [editingVariableData, setEditingVariableData] = useState({ name: '', valor: '' })
+  const [showAddVariableDialog, setShowAddVariableDialog] = useState(false)
+  const [showEditVariableDialog, setShowEditVariableDialog] = useState(false)
+  const [newVariableForm, setNewVariableForm] = useState({ name: '', valor: '' })
   
   // Estados para confirmación de eliminación
   const [showDeleteDialog, setShowDeleteDialog] = useState(false)
@@ -132,6 +147,34 @@ export default function Campanas({ user }: CampanasProps) {
       showError('Error de conexión', 'No se pudo conectar con el servidor')
     } finally {
       setLoading(false)
+    }
+  }
+
+  // Cargar todas las variables personalizadas existentes
+  const loadAllCustomVariables = async (): Promise<CustomVariable[]> => {
+    try {
+      const response = await fetch('/campaigns/custom-variables/all', {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        const variables = result.data || []
+        setAllCustomVariables(variables)
+        return variables
+      } else {
+        console.error('Error al cargar variables personalizadas:', result.message)
+        return []
+      }
+    } catch (error) {
+      console.error('Error al cargar variables personalizadas:', error)
+      return []
     }
   }
 
@@ -194,6 +237,7 @@ export default function Campanas({ user }: CampanasProps) {
     loadCampaigns()
     loadEmailSetups()
     loadLists()
+    loadAllCustomVariables()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -204,15 +248,33 @@ export default function Campanas({ user }: CampanasProps) {
       description: '',
       status: 'active',
       emailSetupId: null,
-      listIds: []
+      listIds: [],
+      customVariables: []
     })
     setEditingCampaign(null)
+    setNewVariableForm({ name: '', valor: '' })
+    setShowAddVariableDialog(false)
+    setEditingVariableId(null)
+    setEditingVariableData({ name: '', valor: '' })
+    setShowEditVariableDialog(false)
   }
 
   // Abrir modal para crear
-  const handleCreate = () => {
+  const handleCreate = async () => {
     try {
       resetForm()
+      // Cargar todas las variables existentes y agregarlas al formulario sin valores
+      const loadedVariables = await loadAllCustomVariables()
+      const existingVariables = loadedVariables.map(v => ({
+        id: v.id,
+        name: v.name,
+        description: v.description || '',
+        valor: ''
+      }))
+      setFormData(prev => ({
+        ...prev,
+        customVariables: existingVariables
+      }))
       setShowForm(true)
     } catch (error) {
       console.error('Error en handleCreate:', error)
@@ -251,12 +313,54 @@ export default function Campanas({ user }: CampanasProps) {
         }
       }
 
+      // Cargar todas las variables existentes y los valores de la campaña
+      const loadedVariables = await loadAllCustomVariables()
+      
+      let campaignVariablesWithValues: CustomVariable[] = []
+      if (campaign.id) {
+        try {
+          const varResponse = await fetch(`/campaigns/${campaign.id}`, {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+              'X-CSRF-TOKEN': getCsrfToken(),
+            },
+            credentials: 'include'
+          })
+          const varResult = await varResponse.json()
+          if (varResult.success && varResult.data?.customVariablesWithValues) {
+            campaignVariablesWithValues = varResult.data.customVariablesWithValues
+          }
+        } catch (error) {
+          console.error('Error al cargar variables personalizadas de la campaña:', error)
+        }
+      }
+
+      // Combinar: todas las variables existentes con sus valores de la campaña (si existen)
+      const combinedVariables = loadedVariables.map(v => {
+        const campaignVar = campaignVariablesWithValues.find(cv => cv.id === v.id)
+        let valor = ''
+        if (campaignVar && campaignVar.valor !== undefined && campaignVar.valor !== null) {
+          // Si el valor existe y no es null, convertirlo a string
+          valor = String(campaignVar.valor)
+        }
+        // Si no existe campaignVar o el valor es null/undefined, valor queda como string vacío
+        
+        return {
+          id: v.id,
+          name: v.name,
+          description: campaignVar?.description || v.description || '',
+          valor: valor
+        }
+      })
+
       setFormData({
         name: campaign.name || '',
         description: campaign.description || '',
         status: campaign.status || 'active',
         emailSetupId: campaign.emailSetupId || null,
-        listIds: campaignListIds
+        listIds: campaignListIds,
+        customVariables: combinedVariables
       })
       setShowForm(true)
     } catch (error) {
@@ -270,6 +374,185 @@ export default function Campanas({ user }: CampanasProps) {
     if (!isSaving) {
       setShowForm(false)
       resetForm()
+    }
+  }
+
+  // Agregar variable personalizada
+  const handleAddVariable = async () => {
+    const trimmed = newVariableForm.name.trim()
+    if (!trimmed) {
+      showError('Campo requerido', 'El nombre de la variable es obligatorio')
+      return
+    }
+
+    // Validar formato: solo letras, números y guiones bajos
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+      showError('Formato inválido', 'El nombre de la variable solo puede contener letras, números y guiones bajos, y debe empezar con letra o guión bajo')
+      return
+    }
+
+    // Verificar que no exista en las variables existentes
+    if (allCustomVariables.some(v => v.name === trimmed)) {
+      showError('Variable duplicada', 'Esta variable ya existe. Usa una variable existente y agrega su valor.')
+      return
+    }
+
+    // Verificar que no exista en el formulario actual
+    if (formData.customVariables.some(v => v.name === trimmed)) {
+      showError('Variable duplicada', 'Esta variable ya está en la lista')
+      return
+    }
+
+    try {
+      // Crear la variable en la base de datos
+      const requestBody: any = {
+        name: trimmed,
+        description: ''
+      }
+
+      // Si estamos editando una campaña, incluir el campaignId y el valor
+      if (editingCampaign) {
+        requestBody.campaignId = editingCampaign.id
+        requestBody.valor = newVariableForm.valor.trim() || null
+      }
+
+      const response = await fetch('/campaigns/custom-variables', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable creada', 'La variable personalizada se ha creado exitosamente', 3000)
+        
+        // Actualizar la lista de variables disponibles
+        await loadAllCustomVariables()
+        
+        // Si estamos editando una campaña, recargar los datos de la campaña para actualizar las variables
+        if (editingCampaign) {
+          await handleEdit(editingCampaign)
+        }
+        
+        // Limpiar el formulario y cerrar el diálogo
+        setNewVariableForm({ name: '', valor: '' })
+        setShowAddVariableDialog(false)
+      } else {
+        showError('Error al crear', result.message || 'No se pudo crear la variable personalizada')
+      }
+    } catch (error) {
+      console.error('Error al crear variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
+
+  // Abrir modal de edición de variable
+  const handleOpenEditVariable = (variable: CustomVariable) => {
+    // Obtener el valor de la variable desde formData.customVariables si estamos editando una campaña
+    // Usar la misma lógica que se usa para mostrar el valor en la lista
+    let valor = ''
+    if (editingCampaign) {
+      const campaignVar = formData.customVariables.find(v => v.id === variable.id)
+      valor = campaignVar?.valor || ''
+    }
+    
+    setEditingVariableId(variable.id!)
+    setEditingVariableData({
+      name: variable.name,
+      valor: valor
+    })
+    setShowEditVariableDialog(true)
+  }
+
+  // Guardar edición de variable personalizada
+  const handleSaveVariableEdit = async () => {
+    if (!editingVariableId) return
+    
+    if (!editingVariableData.name.trim()) {
+      showError('Campo requerido', 'El nombre de la variable es obligatorio')
+      return
+    }
+
+    try {
+      const requestBody: any = {
+        name: editingVariableData.name.trim()
+      }
+
+      // Si estamos editando una campaña, incluir el campaignId y el valor
+      if (editingCampaign) {
+        requestBody.campaignId = editingCampaign.id
+        // Enviar el valor siempre: si está vacío o es undefined, enviar null; si tiene contenido, enviar el string trimmeado
+        requestBody.valor = editingVariableData.valor && editingVariableData.valor.trim() 
+          ? editingVariableData.valor.trim() 
+          : null
+      }
+
+      const response = await fetch(`/campaigns/custom-variables/${editingVariableId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable actualizada', 'La variable personalizada se ha actualizado correctamente', 3000)
+        setEditingVariableId(null)
+        setEditingVariableData({ name: '', valor: '' })
+        setShowEditVariableDialog(false)
+        await loadAllCustomVariables()
+        // Recargar el formulario si estamos editando una campaña
+        if (editingCampaign) {
+          await handleEdit(editingCampaign)
+        }
+      } else {
+        showError('Error al actualizar', result.message || 'No se pudo actualizar la variable')
+      }
+    } catch (error) {
+      console.error('Error al actualizar variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
+  // Eliminar variable personalizada
+  const handleDeleteVariable = async (variableId: number) => {
+    try {
+      const response = await fetch(`/campaigns/custom-variables/${variableId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable eliminada', 'La variable personalizada se ha eliminado correctamente', 3000)
+        await loadAllCustomVariables()
+        // Recargar el formulario si estamos editando una campaña
+        if (editingCampaign) {
+          await handleEdit(editingCampaign)
+        }
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar la variable')
+      }
+    } catch (error) {
+      console.error('Error al eliminar variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
     }
   }
 
@@ -288,6 +571,12 @@ export default function Campanas({ user }: CampanasProps) {
       const url = editingCampaign ? `/campaigns/${editingCampaign.id}` : '/campaigns'
       const method = editingCampaign ? 'PUT' : 'POST'
 
+      const customVariablesToSend = formData.customVariables.map(v => ({
+        name: v.name,
+        description: v.description || '',
+        valor: v.valor || ''
+      }))
+
       const response = await fetch(url, {
         method,
         headers: {
@@ -301,7 +590,8 @@ export default function Campanas({ user }: CampanasProps) {
           description: formData.description.trim() || undefined,
           status: formData.status,
           emailSetupId: formData.emailSetupId || null,
-          listIds: formData.listIds
+          listIds: formData.listIds,
+          customVariables: customVariablesToSend
         })
       })
 
@@ -678,7 +968,238 @@ export default function Campanas({ user }: CampanasProps) {
                   rows={4}
                 />
               </div>
+
+
+              {/* Sección de gestión de variables personalizadas (solo al editar) */}
+              {editingCampaign && (
+                <div className="border rounded-lg p-4 space-y-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <Label className="text-base font-semibold">Gestionar Variables Personalizadas</Label>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Administra todas las variables personalizadas del sistema
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => setShowAddVariableDialog(true)}
+                      className="bg-primary hover:bg-primary/90"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Agregar Variable
+                    </Button>
+                  </div>
+
+                  {allCustomVariables.length > 0 ? (
+                    <div className="space-y-2">
+                      {allCustomVariables.map((variable) => {
+                        // Obtener el valor de la variable desde formData.customVariables si estamos editando una campaña
+                        const campaignVar = editingCampaign ? formData.customVariables.find(v => v.id === variable.id) : null
+                        const valor = campaignVar?.valor || ''
+
+                        return (
+                          <div key={variable.id} className="border rounded-md p-3 bg-gray-50">
+                            <div className="flex items-center justify-between">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-mono font-semibold">
+                                    {`{{${variable.name}}}`}
+                                  </span>
+                                  {editingCampaign && valor && (
+                                    <span className="text-sm text-gray-600">
+                                      = {valor}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="flex gap-2">
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleOpenEditVariable(variable)}
+                                >
+                                  <Edit className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleDeleteVariable(variable.id!)}
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500 text-center py-4">
+                      No hay variables personalizadas creadas
+                    </p>
+                  )}
+                </div>
+              )}
             </form>
+          </Dialog>
+
+          {/* Dialog para agregar nueva variable */}
+          <Dialog
+            open={showAddVariableDialog}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowAddVariableDialog(false)
+                setNewVariableForm({ name: '', valor: '' })
+              } else {
+                setShowAddVariableDialog(open)
+              }
+            }}
+            title="Crear Variable Personalizada"
+            maxWidth="md"
+            footer={
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowAddVariableDialog(false)
+                    setNewVariableForm({ name: '', valor: '' })
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleAddVariable}
+                >
+                  Crear Variable
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="new-var-name">nombre_variable *</Label>
+                <Input
+                  id="new-var-name"
+                  type="text"
+                  value={newVariableForm.name}
+                  onChange={(e) => setNewVariableForm({ ...newVariableForm, name: e.target.value })}
+                  placeholder="Ej: nombre_producto"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddVariable()
+                    }
+                  }}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Solo letras, números y guiones bajos. Debe empezar con letra o guión bajo.
+                </p>
+              </div>
+              <div>
+                <Label htmlFor="new-var-valor">valor_variable</Label>
+                <Input
+                  id="new-var-valor"
+                  type="text"
+                  value={newVariableForm.valor}
+                  onChange={(e) => setNewVariableForm({ ...newVariableForm, valor: e.target.value })}
+                  placeholder="Ej: Camiseta"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleAddVariable()
+                    }
+                  }}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Valor por defecto para esta variable en la campaña.
+                </p>
+              </div>
+            </div>
+          </Dialog>
+
+          {/* Dialog para editar variable */}
+          <Dialog
+            open={showEditVariableDialog}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowEditVariableDialog(false)
+                setEditingVariableId(null)
+                setEditingVariableData({ name: '', valor: '' })
+              } else {
+                setShowEditVariableDialog(open)
+              }
+            }}
+            title="Editar Variable Personalizada"
+            maxWidth="md"
+            footer={
+              <>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setShowEditVariableDialog(false)
+                    setEditingVariableId(null)
+                    setEditingVariableData({ name: '', valor: '' })
+                  }}
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveVariableEdit}
+                >
+                  Guardar Cambios
+                </Button>
+              </>
+            }
+          >
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="edit-var-name">nombre_variable *</Label>
+                <Input
+                  id="edit-var-name"
+                  type="text"
+                  value={editingVariableData.name}
+                  onChange={(e) => setEditingVariableData({ ...editingVariableData, name: e.target.value })}
+                  placeholder="Ej: nombre_producto"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault()
+                      handleSaveVariableEdit()
+                    }
+                  }}
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Solo letras, números y guiones bajos. Debe empezar con letra o guión bajo.
+                </p>
+              </div>
+              {editingCampaign && (
+                <div>
+                  <Label htmlFor="edit-var-valor">valor_variable</Label>
+                  <Input
+                    id="edit-var-valor"
+                    type="text"
+                    value={editingVariableData.valor || ''}
+                    onChange={(e) => setEditingVariableData({ ...editingVariableData, valor: e.target.value })}
+                    placeholder="Ej: Camiseta"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        handleSaveVariableEdit()
+                      }
+                    }}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Valor por defecto para esta variable en la campaña.
+                  </p>
+                </div>
+              )}
+            </div>
           </Dialog>
 
           {/* Barra de búsqueda y filtros */}
@@ -805,10 +1326,15 @@ export default function Campanas({ user }: CampanasProps) {
             )}
           </div>
 
-          {/* Diálogo de confirmación de eliminación */}
+          {/* Diálogo de confirmación de eliminación de campaña */}
           <AlertDialog
-            open={showDeleteDialog}
-            onOpenChange={setShowDeleteDialog}
+            open={showDeleteDialog && !!campaignToDelete}
+            onOpenChange={(open) => {
+              if (!open) {
+                setShowDeleteDialog(false)
+                setCampaignToDelete(null)
+              }
+            }}
             title="¿Estás seguro?"
             description={
               <>
@@ -817,11 +1343,15 @@ export default function Campanas({ user }: CampanasProps) {
               </>
             }
             onConfirm={confirmDelete}
-            onCancel={() => setShowDeleteDialog(false)}
+            onCancel={() => {
+              setShowDeleteDialog(false)
+              setCampaignToDelete(null)
+            }}
             confirmText="Eliminar"
             cancelText="Cancelar"
             variant="destructive"
           />
+
         </div>
       </AppSidebar>
     </>

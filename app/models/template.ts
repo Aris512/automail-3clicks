@@ -1,6 +1,7 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column, manyToMany } from '@adonisjs/lucid/orm'
 import Attachment from './attachment.js'
+import CustomVariable from './custom_variable.js'
 import type { ManyToMany } from '@adonisjs/lucid/types/relations'
 
 export default class Template extends BaseModel {
@@ -22,9 +23,6 @@ export default class Template extends BaseModel {
   })
   declare bodyMarkdown: string
 
-  @column({ serializeAs: 'available_variables' })
-  declare availableVariables: any
-
   @column()
   declare active: boolean
 
@@ -44,4 +42,15 @@ export default class Template extends BaseModel {
     pivotTimestamps: true,
   })
   declare attachments: any
+
+  /**
+   * Relación many-to-many con CustomVariable a través de TemplateCustomVariable
+   */
+  @manyToMany(() => CustomVariable, {
+    pivotTable: 'template_custom_variables',
+    pivotForeignKey: 'template_id',
+    pivotRelatedForeignKey: 'custom_var_id',
+    pivotTimestamps: true,
+  })
+  declare customVariables: ManyToMany<typeof CustomVariable>
 }

@@ -75,12 +75,21 @@ campaign_stages
   - starts_at, created_at, updated_at
 
 //relacion intermedia entre campaigns_stage y templates (tabla pivot)
-
 campaign_stage_templates
   -id, campaign_stage_id, templates_id, created_at, updated_at 
 
 //relacion intermedia entre campaigns y list (tabla pivot)
+campaign_list
   -id, campaign_id, list_id, created at, updated_at
+
+/*nuevo*/
+custom_variables
+ -id, name, description, created_at, updated_at
+ 
+//relacion entre campaign-custom_variables
+campaign_custom_variables
+  id, customVar_id, campaign_id, campaign_stage_id, valor, created_at, updated_at 
+
 
 templates
   - id, tenant_id, stage_id, name, subject, body_markdown

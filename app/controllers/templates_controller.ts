@@ -3,6 +3,8 @@ import Template from '#models/template'
 import TenantUser from '#models/tenant_user'
 import Attachment from '#models/attachment'
 import TemplateAttachment from '#models/templates_attachment'
+import TemplateCustomVariable from '#models/template_custom_variable'
+import CustomVariable from '#models/custom_variable'
 import { inject } from '@adonisjs/core'
 import fs from 'fs/promises'
 import path from 'path'
@@ -495,7 +497,7 @@ export default class TemplatesController {
 
     console.log(`🏢 [STORE] Tenant encontrado: ID ${tenantUser.tenantId}`)
 
-    const data = request.only(['name', 'subject', 'bodyMarkdown', 'availableVariables', 'active'])
+    const data = request.only(['name', 'subject', 'bodyMarkdown', 'active'])
     console.log('📋 [STORE] Datos recibidos:', { ...data, bodyMarkdown: `${data.bodyMarkdown?.substring(0, 50)}...` })
     
     // Validaciones
@@ -534,7 +536,6 @@ export default class TemplatesController {
         name: data.name,
         subject: data.subject,
         bodyMarkdown: bodyContent,
-        availableVariables: data.availableVariables || [],
         active: data.active !== undefined ? data.active : true,
       }
       
@@ -605,7 +606,7 @@ export default class TemplatesController {
 
     console.log(`✅ [UPDATE TEMPLATE] Plantilla encontrada: ${template.name}`)
 
-    const data = request.only(['name', 'subject', 'bodyMarkdown', 'availableVariables', 'active'])
+    const data = request.only(['name', 'subject', 'bodyMarkdown', 'active'])
     
     console.log(`📝 [UPDATE TEMPLATE] Datos recibidos:`, {
       name: data.name,
@@ -850,5 +851,79 @@ export default class TemplatesController {
       success: true,
       data: template
     })
+  }
+
+  /**
+   * Asociar variables personalizadas a un template
+   */
+  async associateVariables({ params, request, response, auth }: HttpContext) {
+    const user = auth.user!
+    
+    const tenantUser = await TenantUser.query()
+      .where('userId', user.id)
+      .where('active', true)
+      .first()
+
+    if (!tenantUser) {
+      return response.status(400).json({
+        success: false,
+        message: 'Usuario no tiene acceso a ningún tenant activo'
+      })
+    }
+
+    const template = await Template.query()
+      .where('id', params.id)
+      .where('tenantId', tenantUser.tenantId)
+      .first()
+
+    if (!template) {
+      return response.status(404).json({
+        success: false,
+        message: 'Plantilla no encontrada'
+      })
+    }
+
+    const { customVarIds } = request.only(['customVarIds'])
+
+    if (!Array.isArray(customVarIds)) {
+      return response.status(400).json({
+        success: false,
+        message: 'customVarIds debe ser un array'
+      })
+    }
+
+    try {
+      // Eliminar asociaciones actuales
+      await TemplateCustomVariable.query()
+        .where('templateId', template.id)
+        .delete()
+
+      // Crear nuevas asociaciones
+      for (const customVarId of customVarIds) {
+        const customVar = await CustomVariable.find(customVarId)
+        if (customVar) {
+          await TemplateCustomVariable.create({
+            templateId: template.id,
+            customVarId: customVarId
+          })
+        }
+      }
+
+      // Cargar variables asociadas
+      await template.load('customVariables')
+
+      return response.json({
+        success: true,
+        message: 'Variables asociadas exitosamente',
+        data: template
+      })
+    } catch (error) {
+      console.error('Error al asociar variables:', error)
+      return response.status(500).json({
+        success: false,
+        message: 'Error al asociar variables',
+        error: error instanceof Error ? error.message : 'Unknown error'
+      })
+    }
   }
 }

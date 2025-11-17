@@ -393,7 +393,7 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
       <ToastContainer toasts={toasts} onClose={removeToast} />
       
       <AppSidebar user={user} pageTitle="Envíos">
-        <div className="space-y-6">
+        <div className="space-y-6 max-w-full overflow-x-hidden">
           {/* Header con acciones */}
           <div className="space-y-4">
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -410,7 +410,7 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                   </button>
                 </div>
               )}
-              <div className="flex items-center gap-2 ml-auto">
+              <div className="flex items-center gap-2 ml-auto flex-wrap">
                 {hasActiveFilters && (
                   <button
                     onClick={clearFilters}
@@ -425,20 +425,22 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                   <button
                     onClick={handleDeleteSelected}
                     disabled={isDeletingSelected}
-                    className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
+                    className="flex items-center gap-2 px-3 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm font-medium"
                     title="Eliminar envíos seleccionados"
                   >
                     <Trash2 className="h-4 w-4" />
-                    Eliminar Seleccionados ({selectedSendings.size})
+                    <span className="hidden sm:inline">Eliminar Seleccionados</span>
+                    <span className="sm:hidden">Eliminar</span>
+                    <span className="hidden sm:inline">({selectedSendings.size})</span>
                   </button>
                 )}
                 <button
                   onClick={refreshSendings}
                   disabled={isRefreshing}
-                  className="flex items-center gap-2 px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="flex items-center gap-2 px-3 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
                   <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-                  Actualizar
+                  <span className="hidden sm:inline">Actualizar</span>
                 </button>
               </div>
             </div>
@@ -569,10 +571,10 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
           {/* Tabla de envíos */}
           <div className="bg-white rounded-lg shadow border border-gray-200 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="w-full divide-y divide-gray-200 table-fixed">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider w-12">
+                    <th className="w-12 px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       <input
                         type="checkbox"
                         checked={filteredSendings.length > 0 && selectedSendings.size === filteredSendings.length}
@@ -589,30 +591,29 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                         title="Seleccionar todos los envíos filtrados"
                       />
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-[180px] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Contacto
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Asunto
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-[150px] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Plantilla
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-[120px] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Estado
                     </th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    <th className="w-[140px] px-3 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Fecha Envío
                     </th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Acciones
+                    <th className="w-16 px-3 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                     </th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
                   {filteredSendings.map((sending) => (
                     <tr key={sending.id} className={`hover:bg-gray-50 ${selectedSendings.has(sending.id) ? 'bg-blue-50' : ''}`}>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4">
                         <input
                           type="checkbox"
                           checked={selectedSendings.has(sending.id)}
@@ -621,45 +622,47 @@ export default function Envios({ user, sendings = [] }: EnviosProps) {
                           onClick={(e) => e.stopPropagation()}
                         />
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <User className="h-4 w-4 text-gray-400 mr-2" />
-                          <div>
-                            <div className="text-sm font-medium text-gray-900">
+                      <td className="px-3 py-4">
+                        <div className="flex items-center min-w-0">
+                          <User className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-gray-900 truncate">
                               {sending.contact?.name || 'N/A'}
                             </div>
-                            <div className="text-sm text-gray-500">
+                            <div className="text-sm text-gray-500 truncate" title={sending.contact?.email || 'N/A'}>
                               {sending.contact?.email || 'N/A'}
                             </div>
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4">
-                        <div className="text-sm text-gray-900 max-w-xs truncate" title={sending.sentSubject || 'Sin asunto'}>
+                      <td className="px-3 py-4">
+                        <div className="text-sm text-gray-900 truncate" title={sending.sentSubject || 'Sin asunto'}>
                           {sending.sentSubject || 'Sin asunto'}
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <div className="flex items-center">
-                          <FileText className="h-4 w-4 text-gray-400 mr-2" />
-                          <div className="text-sm text-gray-900">
+                      <td className="px-3 py-4">
+                        <div className="flex items-center min-w-0">
+                          <FileText className="h-4 w-4 text-gray-400 mr-2 flex-shrink-0" />
+                          <div className="text-sm text-gray-900 truncate" title={sending.template?.name || 'Sin plantilla'}>
                             {sending.template?.name || 'Sin plantilla'}
                           </div>
                         </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap">
+                      <td className="px-3 py-4">
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${getStatusColor(sending.deliveryStatus)}`}>
                           {getStatusIcon(sending.deliveryStatus)}
-                          {sending.deliveryStatus}
+                          <span className="hidden sm:inline">{sending.deliveryStatus}</span>
                         </span>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {formatDate(sending.sentAt)}
+                      <td className="px-3 py-4 text-sm text-gray-500">
+                        <div className="truncate" title={formatDate(sending.sentAt)}>
+                          {formatDate(sending.sentAt)}
+                        </div>
                       </td>
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <td className="px-3 py-4 text-right text-sm font-medium">
                         <button
                           onClick={() => handleView(sending)}
-                          className="text-blue-600 hover:text-blue-900 transition-colors"
+                          className="text-blue-600 hover:text-blue-900 transition-colors inline-flex items-center justify-center"
                           title="Ver detalles del envío"
                         >
                           <Eye className="h-4 w-4" />
