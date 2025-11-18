@@ -212,22 +212,6 @@ export default class CampaignsController {
       .preload('customVariables')
       .first()
 
-    // Obtener variables con valores a nivel campaign
-    if (campaign) {
-      const campaignVariables = await CampaignCustomVariable.query()
-        .where('campaignId', campaign.id)
-        .whereNull('campaignStageId')
-        .preload('customVariable')
-      
-      // Agregar variables con valores al objeto campaign
-      ;(campaign as any).customVariablesWithValues = campaignVariables.map(cv => ({
-        id: cv.customVariable.id,
-        name: cv.customVariable.name,
-        description: cv.customVariable.description,
-        valor: cv.valor
-      }))
-    }
-
     if (!campaign) {
       return response.status(404).json({
         success: false,
@@ -235,9 +219,27 @@ export default class CampaignsController {
       })
     }
 
+    // Obtener variables con valores a nivel campaign
+    const campaignVariables = await CampaignCustomVariable.query()
+      .where('campaignId', campaign.id)
+      .whereNull('campaignStageId')
+      .preload('customVariable')
+    
+    // Crear el array de variables con valores
+    const customVariablesWithValues = campaignVariables.map(cv => ({
+      id: cv.customVariable.id,
+      name: cv.customVariable.name,
+      description: cv.customVariable.description,
+      valor: cv.valor
+    }))
+
+    // Serializar la campaña y agregar customVariablesWithValues
+    const campaignData = campaign.serialize()
+    ;(campaignData as any).customVariablesWithValues = customVariablesWithValues
+
     return response.json({
       success: true,
-      data: campaign
+      data: campaignData
     })
   }
 
@@ -273,15 +275,6 @@ export default class CampaignsController {
     }
 
     const data = request.only(['name', 'description', 'status', 'emailSetupId', 'listIds', 'customVariables'])
-    
-    console.log(`[CAMPAIGN UPDATE] Datos recibidos para campaña ${params.id}:`, {
-      name: data.name,
-      customVariables: data.customVariables,
-      customVariablesType: typeof data.customVariables,
-      customVariablesIsArray: Array.isArray(data.customVariables),
-      customVariablesLength: Array.isArray(data.customVariables) ? data.customVariables.length : 'N/A',
-      requestBody: request.body()
-    })
     
     // Validaciones básicas
     if (data.name !== undefined && (!data.name || !data.name.trim())) {
@@ -360,14 +353,10 @@ export default class CampaignsController {
 
       // Actualizar variables personalizadas si se proporcionaron
       if (data.customVariables !== undefined) {
-        console.log(`[CAMPAIGN UPDATE] Procesando actualización de variables personalizadas. Array recibido:`, data.customVariables)
-        
         // Obtener variables actuales a nivel campaign
         const currentCampaignVars = await CampaignCustomVariable.query()
           .where('campaignId', campaign.id)
           .whereNull('campaignStageId')
-
-        console.log(`[CAMPAIGN UPDATE] Variables actuales en la campaña: ${currentCampaignVars.length}`)
 
         // Eliminar todas las variables actuales a nivel campaign
         for (const cv of currentCampaignVars) {
@@ -375,15 +364,9 @@ export default class CampaignsController {
         }
 
         // Crear nuevas variables si se proporcionaron
-        if (Array.isArray(data.customVariables)) {
-          console.log(`[CAMPAIGN UPDATE] Array de variables es válido, longitud: ${data.customVariables.length}`)
-          
-          if (data.customVariables.length > 0) {
-          console.log(`[CAMPAIGN UPDATE] Procesando ${data.customVariables.length} variables personalizadas para campaña ${campaign.id}`)
-          
+        if (Array.isArray(data.customVariables) && data.customVariables.length > 0) {
           for (const customVar of data.customVariables) {
             if (!customVar.name || !customVar.name.trim()) {
-              console.log('[CAMPAIGN UPDATE] Saltando variable sin nombre:', customVar)
               continue
             }
 
@@ -391,22 +374,16 @@ export default class CampaignsController {
             const varDescription = customVar.description?.trim() || null
             const varValor = customVar.valor?.trim() || null
 
-            console.log(`[CAMPAIGN UPDATE] Procesando variable: nombre="${varName}", descripción="${varDescription}", valor="${varValor}"`)
-
             // Crear o encontrar la variable personalizada
             let customVariable = await CustomVariable.query()
               .where('name', varName)
               .first()
 
             if (!customVariable) {
-              console.log(`[CAMPAIGN UPDATE] Creando nueva variable personalizada: ${varName}`)
               customVariable = await CustomVariable.create({
                 name: varName,
                 description: varDescription
               })
-              console.log(`[CAMPAIGN UPDATE] Variable personalizada creada con ID: ${customVariable.id}`)
-            } else {
-              console.log(`[CAMPAIGN UPDATE] Variable personalizada ya existe con ID: ${customVariable.id}`)
             }
 
             // Verificar si ya existe una relación para esta variable en esta campaña
@@ -417,31 +394,19 @@ export default class CampaignsController {
               .first()
 
             if (existingRelation) {
-              console.log(`[CAMPAIGN UPDATE] Actualizando relación existente ID: ${existingRelation.id} con valor="${varValor}"`)
               existingRelation.valor = varValor
               await existingRelation.save()
             } else {
               // Crear la relación en campaign_custom_variables con el valor
-              console.log(`[CAMPAIGN UPDATE] Creando relación campaign_custom_variables: campaignId=${campaign.id}, customVarId=${customVariable.id}, valor="${varValor}"`)
-              const campaignCustomVar = await CampaignCustomVariable.create({
+              await CampaignCustomVariable.create({
                 customVarId: customVariable.id,
                 campaignId: campaign.id,
                 campaignStageId: null,
                 valor: varValor
               })
-              console.log(`[CAMPAIGN UPDATE] Relación creada con ID: ${campaignCustomVar.id}`)
             }
           }
-          
-            console.log(`[CAMPAIGN UPDATE] Finalizado procesamiento de variables personalizadas para campaña ${campaign.id}`)
-          } else {
-            console.log(`[CAMPAIGN UPDATE] Array de variables está vacío para campaña ${campaign.id}`)
-          }
-        } else {
-          console.log(`[CAMPAIGN UPDATE] customVariables no es un array válido:`, typeof data.customVariables)
         }
-      } else {
-        console.log(`[CAMPAIGN UPDATE] customVariables es undefined para campaña ${campaign.id}`)
       }
 
       // Cargar relaciones para la respuesta
@@ -488,7 +453,33 @@ export default class CampaignsController {
         .where('tenantId', tenantUser.tenantId)
         .firstOrFail()
       
+      // Obtener todas las variables personalizadas asociadas a esta campaña ANTES de eliminarla
+      const campaignVariables = await CampaignCustomVariable.query()
+        .where('campaignId', campaign.id)
+        .preload('customVariable')
+      
+      // Guardar los IDs de las variables personalizadas para verificar después
+      const customVariableIds = campaignVariables.map(cv => cv.customVarId)
+      
+      // Eliminar la campaña (esto eliminará automáticamente las relaciones en campaign_custom_variables por cascade)
       await campaign.delete()
+      
+      // Eliminar las variables personalizadas que solo pertenecen a esta campaña
+      // (que no están asociadas a ninguna otra campaña)
+      for (const customVarId of customVariableIds) {
+        // Verificar si esta variable está asociada a otras campañas
+        const otherCampaignVars = await CampaignCustomVariable.query()
+          .where('customVarId', customVarId)
+          .first()
+        
+        // Si no está asociada a ninguna otra campaña, eliminar la variable
+        if (!otherCampaignVars) {
+          const customVariable = await CustomVariable.find(customVarId)
+          if (customVariable) {
+            await customVariable.delete()
+          }
+        }
+      }
       
       return response.json({
         success: true,
@@ -789,3 +780,4 @@ export default class CampaignsController {
     }
   }
 }
+
