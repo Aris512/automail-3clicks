@@ -30,16 +30,5 @@ export default class CustomVariable extends BaseModel {
     pivotTimestamps: true,
   })
   declare campaigns: ManyToMany<typeof Campaign>
-
-  /**
-   * Relación many-to-many con Template a través de TemplateCustomVariable
-   */
-  @manyToMany(() => Template, {
-    pivotTable: 'template_custom_variables',
-    pivotForeignKey: 'custom_var_id',
-    pivotRelatedForeignKey: 'template_id',
-    pivotTimestamps: true,
-  })
-  declare templates: ManyToMany<typeof Template>
 }
 

@@ -3,11 +3,11 @@ import Template from '#models/template'
 import TenantUser from '#models/tenant_user'
 import Attachment from '#models/attachment'
 import TemplateAttachment from '#models/templates_attachment'
-import TemplateCustomVariable from '#models/template_custom_variable'
-import CustomVariable from '#models/custom_variable'
 import { inject } from '@adonisjs/core'
 import fs from 'fs/promises'
 import path from 'path'
+import CampaignStageTemplate from '#models/campaign_stage_template'
+import CampaignCustomVariable from '#models/campaign_custom_variable'
 
 @inject()
 export default class TemplatesController {
@@ -637,6 +637,65 @@ export default class TemplatesController {
       console.log(`ℹ️ [UPDATE TEMPLATE] No hay contenido nuevo, no se reemplazan attachments`)
     }
 
+    // Verificar si la plantilla está asociada a una etapa y asegurar registros en campaign_custom_variables
+    // Buscar si la plantilla está asociada a alguna etapa
+    const stageTemplate = await CampaignStageTemplate.query()
+      .where('templatesId', template.id)
+      .preload('campaignStage')
+      .first()
+
+    if (stageTemplate && stageTemplate.campaignStage) {
+      const stage = stageTemplate.campaignStage
+      console.log(`🔗 [UPDATE TEMPLATE] Plantilla asociada a etapa ${stage.id} de campaña ${stage.campaignId}`)
+
+      // Verificar si existen registros de variables para esta etapa
+      const existingStageVars = await CampaignCustomVariable.query()
+        .where('campaignId', stage.campaignId)
+        .where('campaignStageId', stage.id)
+        .first()
+
+      // Si no existen registros para esta etapa, crearlos desde la campaña
+      if (!existingStageVars) {
+        console.log(`📋 [UPDATE TEMPLATE] Creando registros de variables para la etapa...`)
+        const campaignVars = await CampaignCustomVariable.query()
+          .where('campaignId', stage.campaignId)
+          .whereNull('campaignStageId')
+          .preload('customVariable')
+
+        // Actualizar registros existentes (incluso si campaign_stage_id es null) agregando campaign_stage_id = stage.id
+        // y valor_stage, o crear si no existe un registro
+        for (const campaignVar of campaignVars) {
+          // Buscar si existe un registro con campaign_stage_id = null
+          const existingVar = await CampaignCustomVariable.query()
+            .where('customVarId', campaignVar.customVarId)
+            .where('campaignId', stage.campaignId)
+            .whereNull('campaignStageId')
+            .first()
+
+          if (existingVar) {
+            // Actualizar el registro existente agregando campaign_stage_id y valor_stage
+            existingVar.campaignStageId = stage.id
+            existingVar.valorStage = campaignVar.valorStage
+            await existingVar.save()
+          } else {
+            // Si no existe, crear uno nuevo
+            await CampaignCustomVariable.create({
+              customVarId: campaignVar.customVarId,
+              campaignId: stage.campaignId,
+              campaignStageId: stage.id,
+              valor: campaignVar.valor,
+              valorStage: campaignVar.valorStage
+            })
+          }
+        }
+        console.log(`✅ [UPDATE TEMPLATE] Registros de variables creados para la etapa`)
+      } else {
+        console.log(`ℹ️ [UPDATE TEMPLATE] Ya existen registros de variables para la etapa`)
+      }
+    } else {
+      console.log(`ℹ️ [UPDATE TEMPLATE] Plantilla no asociada a ninguna etapa`)
+    }
+
     console.log(`✅ [UPDATE TEMPLATE] Plantilla actualizada exitosamente`)
     console.log('🚀 [UPDATE TEMPLATE] ===============================\n')
 
@@ -853,77 +912,4 @@ export default class TemplatesController {
     })
   }
 
-  /**
-   * Asociar variables personalizadas a un template
-   */
-  async associateVariables({ params, request, response, auth }: HttpContext) {
-    const user = auth.user!
-    
-    const tenantUser = await TenantUser.query()
-      .where('userId', user.id)
-      .where('active', true)
-      .first()
-
-    if (!tenantUser) {
-      return response.status(400).json({
-        success: false,
-        message: 'Usuario no tiene acceso a ningún tenant activo'
-      })
-    }
-
-    const template = await Template.query()
-      .where('id', params.id)
-      .where('tenantId', tenantUser.tenantId)
-      .first()
-
-    if (!template) {
-      return response.status(404).json({
-        success: false,
-        message: 'Plantilla no encontrada'
-      })
-    }
-
-    const { customVarIds } = request.only(['customVarIds'])
-
-    if (!Array.isArray(customVarIds)) {
-      return response.status(400).json({
-        success: false,
-        message: 'customVarIds debe ser un array'
-      })
-    }
-
-    try {
-      // Eliminar asociaciones actuales
-      await TemplateCustomVariable.query()
-        .where('templateId', template.id)
-        .delete()
-
-      // Crear nuevas asociaciones
-      for (const customVarId of customVarIds) {
-        const customVar = await CustomVariable.find(customVarId)
-        if (customVar) {
-          await TemplateCustomVariable.create({
-            templateId: template.id,
-            customVarId: customVarId
-          })
-        }
-      }
-
-      // Cargar variables asociadas
-      await template.load('customVariables')
-
-      return response.json({
-        success: true,
-        message: 'Variables asociadas exitosamente',
-        data: template
-      })
-    } catch (error) {
-      console.error('Error al asociar variables:', error)
-      return response.status(500).json({
-        success: false,
-        message: 'Error al asociar variables',
-        error: error instanceof Error ? error.message : 'Unknown error'
-      })
-    }
-  }
 }

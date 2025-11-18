@@ -1305,6 +1305,29 @@ export default function Campanas({ user }: CampanasProps) {
                               {campaign.description && (
                                 <p className="text-sm text-gray-600 mt-2">{campaign.description}</p>
                               )}
+                              {/* Mostrar variables personalizadas */}
+                              {campaign.customVariablesWithValues && campaign.customVariablesWithValues.length > 0 && (
+                                <div className="mt-3 pt-3 border-t border-gray-200">
+                                  <p className="text-xs font-semibold text-gray-500 mb-2">Variables Personalizadas:</p>
+                                  <div className="flex flex-wrap gap-2">
+                                    {campaign.customVariablesWithValues.map((variable: CustomVariable) => (
+                                      <div
+                                        key={variable.id}
+                                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-blue-50 border border-blue-200 rounded-md"
+                                      >
+                                        <span className="text-xs font-medium text-blue-700">
+                                          {variable.name.replace(/_/g, ' ')}
+                                        </span>
+                                        {variable.valor && (
+                                          <span className="text-xs text-blue-600">
+                                            = {variable.valor}
+                                          </span>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
                             <div className="flex gap-1">
                               {/* Botones de estado */}

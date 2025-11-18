@@ -10,6 +10,7 @@ import { Plus, FileText, Edit, Trash2, Eye, X, Link2, Unlink, Filter, Search, Re
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { AlertDialog } from '~/components/ui/alert-dialog'
+import { Dialog } from '~/components/ui/dialog'
 import "~/components/tiptap/tiptap-node/image-node/image-node.scss"
 
 interface User {
@@ -24,7 +25,6 @@ interface Template {
   subject: string
   bodyMarkdown: string
   active: boolean
-  customVariables?: CustomVariable[]
   createdAt: string
   updatedAt: string
 }
@@ -34,6 +34,8 @@ interface CustomVariable {
   name: string
   description?: string
   valor?: string
+  valorStage?: string
+  valorFinal?: string
   isOverridden?: boolean
 }
 
@@ -109,17 +111,24 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   const [editingStageId, setEditingStageId] = useState<number | null>(null)
   const [stageVariables, setStageVariables] = useState<CustomVariable[]>([])
   
+  // Estados para gestión de variables personalizadas en etapa
+  const [showAddVariableDialog, setShowAddVariableDialog] = useState(false)
+  const [showEditVariableDialog, setShowEditVariableDialog] = useState(false)
+  const [showEditStageValueDialog, setShowEditStageValueDialog] = useState(false)
+  const [newVariableForm, setNewVariableForm] = useState({ name: '', valor: '' })
+  const [editingVariableId, setEditingVariableId] = useState<number | null>(null)
+  const [editingVariableData, setEditingVariableData] = useState({ name: '', valor: '' })
+  const [editingStageValueData, setEditingStageValueData] = useState({ variableId: 0, variableName: '', valor: '' })
+  
   // Formulario de template
   const [templateFormData, setTemplateFormData] = useState({
     name: '',
     subject: '',
     content: '',
-    active: true,
-    customVarIds: [] as number[]
+    active: true
   })
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null)
   const [availableCustomVariables, setAvailableCustomVariables] = useState<CustomVariable[]>([])
-  const [selectedStageId, setSelectedStageId] = useState<number | null>(null)
 
   // Función helper para obtener el token CSRF
   const getCsrfToken = () => {
@@ -439,28 +448,6 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       const data = await response.json()
       
       if (data.success) {
-        const templateId = data.data?.id || editingTemplateId
-        
-        // Asociar variables personalizadas si se seleccionaron
-        if (templateId && templateFormData.customVarIds.length > 0) {
-          try {
-            await fetch(`/templates/${templateId}/associate-variables`, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Accept': 'application/json',
-                'X-CSRF-TOKEN': getCsrfToken(),
-              },
-              credentials: 'include',
-              body: JSON.stringify({
-                customVarIds: templateFormData.customVarIds
-              })
-            })
-          } catch (error) {
-            console.error('Error al asociar variables:', error)
-          }
-        }
-
         showSuccess(
           editingTemplateId ? 'Plantilla actualizada' : 'Plantilla creada',
           editingTemplateId ? 'La plantilla se ha actualizado correctamente' : 'La plantilla se ha creado exitosamente',
@@ -606,25 +593,24 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       name: template.name,
       subject: template.subject,
       content: template.bodyMarkdown,
-      active: template.active,
-      customVarIds: template.customVariables?.map(v => v.id) || []
+      active: template.active
     })
     setEditingTemplateId(template.id)
     
-    // Cargar variables disponibles desde la etapa asociada si existe
+    // Cargar variables disponibles desde la campaña asociada si la plantilla está asociada a una etapa
     const associatedStage = stages.find(s => s.templates?.some(t => t.id === template.id))
-    if (associatedStage) {
-      setSelectedStageId(associatedStage.id)
-      await loadVariablesFromStage(associatedStage.id)
+    if (associatedStage && associatedStage.campaignId) {
+      // Cargar variables directamente desde la campaña
+      await loadVariablesFromCampaign(associatedStage.campaignId)
     }
     
     setShowTemplateForm(true)
   }
 
-  // Cargar variables desde una etapa
-  const loadVariablesFromStage = async (stageId: number) => {
+  // Cargar variables desde una campaña
+  const loadVariablesFromCampaign = async (campaignId: number) => {
     try {
-      const response = await fetch(`/campaign-stages/${stageId}`, {
+      const response = await fetch(`/campaigns/${campaignId}`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
@@ -637,9 +623,10 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
         setAvailableCustomVariables(result.data.customVariablesWithValues)
       }
     } catch (error) {
-      console.error('Error al cargar variables de la etapa:', error)
+      console.error('Error al cargar variables de la campaña:', error)
     }
   }
+
 
   // Eliminar
   const handleDeleteClick = (id: number, type: 'stage' | 'template') => {
@@ -709,6 +696,234 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     }
   }
 
+  // Agregar variable personalizada desde el modal de etapa
+  const handleAddVariable = async () => {
+    if (!stageFormData.campaignId) {
+      showError('Campaña requerida', 'Debes seleccionar una campaña primero')
+      return
+    }
+
+    const trimmed = newVariableForm.name.trim()
+    if (!trimmed) {
+      showError('Campo requerido', 'El nombre de la variable es obligatorio')
+      return
+    }
+
+    // Validar formato: solo letras, números y guiones bajos
+    if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(trimmed)) {
+      showError('Formato inválido', 'El nombre de la variable solo puede contener letras, números y guiones bajos, y debe empezar con letra o guión bajo')
+      return
+    }
+
+    // Verificar que no exista en las variables existentes
+    if (stageVariables.some(v => v.name === trimmed)) {
+      showError('Variable duplicada', 'Esta variable ya existe. Usa una variable existente y agrega su valor.')
+      return
+    }
+
+    try {
+      const requestBody: any = {
+        name: trimmed,
+        description: '',
+        campaignId: parseInt(stageFormData.campaignId),
+        valor: newVariableForm.valor.trim() || null
+      }
+
+      const response = await fetch('/campaigns/custom-variables', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable creada', 'La variable personalizada se ha creado exitosamente', 3000)
+        // Recargar variables de la campaña
+        await loadStageVariablesFromCampaign(parseInt(stageFormData.campaignId))
+        setNewVariableForm({ name: '', valor: '' })
+        setShowAddVariableDialog(false)
+      } else {
+        showError('Error al crear', result.message || 'No se pudo crear la variable personalizada')
+      }
+    } catch (error) {
+      console.error('Error al crear variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
+  // Abrir modal de edición de variable de campaña
+  const handleOpenEditVariable = (variable: CustomVariable) => {
+    // Validar que hay una campaña seleccionada
+    if (!stageFormData.campaignId) {
+      showError('Campaña requerida', 'Debes seleccionar una campaña primero')
+      return
+    }
+
+    // Validar que la variable pertenece a la campaña de la etapa
+    const variableInCampaign = stageVariables.find(v => v.id === variable.id)
+    if (!variableInCampaign) {
+      showError('Variable no válida', 'Esta variable no pertenece a la campaña de la etapa')
+      return
+    }
+
+    // Obtener el valor de la variable desde stageVariables (valor de campaña)
+    let valor = ''
+    if (variableInCampaign) {
+      valor = variableInCampaign.valorFinal || variableInCampaign.valor || ''
+    }
+    
+    setEditingVariableId(variable.id)
+    setEditingVariableData({
+      name: variable.name,
+      valor: valor
+    })
+    setShowEditVariableDialog(true)
+  }
+
+  // Abrir modal de edición de valor para la etapa
+  const handleOpenEditStageValue = (variable: CustomVariable) => {
+    const existingValue = stageFormData.customVariableValues.find(v => v.customVarId === variable.id)
+    const valorFinal = variable.valorFinal || (variable.valorStage || variable.valor || '')
+    const currentValor = existingValue?.valor || valorFinal || ''
+    
+    setEditingStageValueData({
+      variableId: variable.id,
+      variableName: variable.name,
+      valor: currentValor
+    })
+    setShowEditStageValueDialog(true)
+  }
+
+  // Guardar valor de etapa
+  const handleSaveStageValue = () => {
+    if (!editingStageValueData.variableId) return
+
+    const updated = stageFormData.customVariableValues.filter(v => v.customVarId !== editingStageValueData.variableId)
+    if (editingStageValueData.valor.trim()) {
+      updated.push({ 
+        customVarId: editingStageValueData.variableId, 
+        valor: editingStageValueData.valor.trim() 
+      })
+      showSuccess('Valor actualizado', 'El valor para esta etapa se ha actualizado correctamente', 2000)
+    } else {
+      showSuccess('Valor restaurado', 'Se restauró el valor de la campaña para esta etapa', 2000)
+    }
+    
+    setStageFormData({
+      ...stageFormData,
+      customVariableValues: updated
+    })
+    
+    setShowEditStageValueDialog(false)
+    setEditingStageValueData({ variableId: 0, variableName: '', valor: '' })
+  }
+
+  // Guardar edición de variable personalizada
+  const handleSaveVariableEdit = async () => {
+    if (!editingVariableId || !stageFormData.campaignId) {
+      showError('Error', 'Faltan datos necesarios para editar la variable')
+      return
+    }
+    
+    if (!editingVariableData.name.trim()) {
+      showError('Campo requerido', 'El nombre de la variable es obligatorio')
+      return
+    }
+
+    // Validar que la variable pertenece a la campaña de la etapa
+    const variableInCampaign = stageVariables.find(v => v.id === editingVariableId)
+    if (!variableInCampaign) {
+      showError('Variable no válida', 'Esta variable no pertenece a la campaña de la etapa')
+      setShowEditVariableDialog(false)
+      setEditingVariableId(null)
+      setEditingVariableData({ name: '', valor: '' })
+      return
+    }
+
+    try {
+      const requestBody: any = {
+        name: editingVariableData.name.trim(),
+        campaignId: parseInt(stageFormData.campaignId),
+        valor: editingVariableData.valor && editingVariableData.valor.trim() 
+          ? editingVariableData.valor.trim() 
+          : null
+      }
+
+      const response = await fetch(`/campaigns/custom-variables/${editingVariableId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify(requestBody)
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Éxito', 'Se editó correctamente la variable', 3000)
+        setEditingVariableId(null)
+        setEditingVariableData({ name: '', valor: '' })
+        setShowEditVariableDialog(false)
+        // Recargar variables de la campaña
+        await loadStageVariablesFromCampaign(parseInt(stageFormData.campaignId))
+      } else {
+        showError('Error al actualizar', result.message || 'No se pudo actualizar la variable')
+      }
+    } catch (error) {
+      console.error('Error al actualizar variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
+  // Eliminar variable personalizada
+  const handleDeleteVariable = async (variableId: number) => {
+    // Validar que hay una campaña seleccionada
+    if (!stageFormData.campaignId) {
+      showError('Campaña requerida', 'Debes seleccionar una campaña primero')
+      return
+    }
+
+    // Validar que la variable pertenece a la campaña de la etapa
+    const variableInCampaign = stageVariables.find(v => v.id === variableId)
+    if (!variableInCampaign) {
+      showError('Variable no válida', 'Esta variable no pertenece a la campaña de la etapa')
+      return
+    }
+
+    try {
+      const response = await fetch(`/campaigns/custom-variables/${variableId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable eliminada', 'La variable personalizada se ha eliminado correctamente', 3000)
+        // Recargar variables de la campaña
+        await loadStageVariablesFromCampaign(parseInt(stageFormData.campaignId))
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar la variable')
+      }
+    } catch (error) {
+      console.error('Error al eliminar variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
   // Resetear formularios
   const resetStageForm = () => {
     setStageFormData({
@@ -721,6 +936,13 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     setEditingStageId(null)
     setShowStageForm(false)
     setStageVariables([])
+    setNewVariableForm({ name: '', valor: '' })
+    setShowAddVariableDialog(false)
+    setEditingVariableId(null)
+    setEditingVariableData({ name: '', valor: '' })
+    setShowEditVariableDialog(false)
+    setShowEditStageValueDialog(false)
+    setEditingStageValueData({ variableId: 0, variableName: '', valor: '' })
   }
 
   const resetTemplateForm = () => {
@@ -728,13 +950,11 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       name: '',
       subject: '',
       content: '',
-      active: true,
-      customVarIds: []
+      active: true
     })
     setEditingTemplateId(null)
     setShowTemplateForm(false)
     setAvailableCustomVariables([])
-    setSelectedStageId(null)
   }
 
   return (
@@ -972,6 +1192,13 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                     <Button
                                       variant="ghost"
                                       size="sm"
+                                      onClick={() => handleEditTemplate(template)}
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </Button>
+                                    <Button
+                                      variant="ghost"
+                                      size="sm"
                                       onClick={() => handleDissociateTemplate(stage.id, template.id)}
                                     >
                                       <Unlink className="h-4 w-4 text-red-500" />
@@ -1155,76 +1382,93 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                 </div>
 
                 {/* Variables heredadas de la campaign */}
-                {stageVariables.length > 0 && (
-                  <div className="border rounded-lg p-4 space-y-3 mt-4">
-                    <div>
-                      <Label className="text-base font-semibold">Variables Personalizadas</Label>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Variables heredadas de la campaña. Puedes sobrescribir valores específicos para esta etapa.
-                      </p>
+                {stageFormData.campaignId && (
+                  <div className="border rounded-lg p-4 space-y-4 mt-4">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <Label className="text-base font-semibold">Gestionar Variables Personalizadas</Label>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Variables de la campaña. Puedes sobrescribir valores específicos para esta etapa.
+                        </p>
+                      </div>
+                      <Button
+                        type="button"
+                        onClick={() => setShowAddVariableDialog(true)}
+                        className="bg-primary hover:bg-primary/90"
+                      >
+                        <Plus className="h-4 w-4 mr-2" />
+                        Agregar Variable
+                      </Button>
                     </div>
-                    {stageVariables.map((variable) => {
-                      const existingValue = stageFormData.customVariableValues.find(v => v.customVarId === variable.id)
-                      const currentValue = existingValue?.valor || variable.valor || ''
-                      const isOverridden = !!existingValue
 
-                      return (
-                        <div key={variable.id} className="border rounded-md p-3 bg-gray-50 space-y-2">
-                          <div className="flex items-start justify-between">
-                            <div className="flex-1 space-y-2">
-                              <div>
-                                <Label className="text-xs text-gray-600">
-                                  {`{{${variable.name}}}`}
-                                  {variable.description && (
-                                    <span className="text-gray-500 ml-2">- {variable.description}</span>
+                    {stageVariables.length > 0 ? (
+                      <div className="space-y-2">
+                        {stageVariables.map((variable) => {
+                          const existingValue = stageFormData.customVariableValues.find(v => v.customVarId === variable.id)
+                          // Priorizar valor_stage sobre valor (usar valorFinal si está disponible, si no calcular)
+                          const valorFinal = variable.valorFinal || (variable.valorStage || variable.valor || '')
+                          const isOverridden = !!existingValue
+
+                          return (
+                            <div key={variable.id} className="border rounded-md p-3 bg-gray-50">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold">
+                                      {`{{${variable.name}}}`}
+                                    </span>
+                                    {isOverridden && (
+                                      <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">
+                                        Valor sobrescrito
+                                      </span>
+                                    )}
+                                  </div>
+                                  {valorFinal && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      Valor: <span className="font-mono">{valorFinal}</span>
+                                    </p>
                                   )}
-                                </Label>
-                                {!isOverridden && variable.valor && (
-                                  <p className="text-xs text-gray-500 mt-1">
-                                    Valor de campaña: <span className="font-mono">{variable.valor}</span>
-                                  </p>
-                                )}
-                              </div>
-                              <div>
-                                <Label className="text-xs text-gray-600">Valor para esta etapa (opcional)</Label>
-                                <Input
-                                  type="text"
-                                  value={currentValue}
-                                  onChange={(e) => {
-                                    const newValue = e.target.value
-                                    const updated = stageFormData.customVariableValues.filter(v => v.customVarId !== variable.id)
-                                    if (newValue.trim()) {
-                                      updated.push({ customVarId: variable.id, valor: newValue })
-                                    }
-                                    setStageFormData({
-                                      ...stageFormData,
-                                      customVariableValues: updated
-                                    })
-                                  }}
-                                  placeholder={variable.valor || "Sobrescribir valor de campaña"}
-                                />
-                                {isOverridden && (
+                                </div>
+                                <div className="flex gap-2">
                                   <Button
                                     type="button"
-                                    variant="ghost"
+                                    variant="outline"
                                     size="sm"
-                                    onClick={() => {
-                                      setStageFormData({
-                                        ...stageFormData,
-                                        customVariableValues: stageFormData.customVariableValues.filter(v => v.customVarId !== variable.id)
-                                      })
-                                    }}
-                                    className="mt-1 text-xs text-red-600 hover:text-red-700"
+                                    onClick={() => handleOpenEditStageValue(variable)}
+                                    title="Editar valor para esta etapa"
                                   >
-                                    Restaurar valor de campaña
+                                    <Edit className="h-4 w-4" />
                                   </Button>
-                                )}
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleOpenEditVariable(variable)}
+                                    title="Editar variable de campaña"
+                                  >
+                                    <Edit className="h-4 w-4" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteVariable(variable.id)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="Eliminar variable"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        </div>
-                      )
-                    })}
+                          )
+                        })}
+                      </div>
+                    ) : (
+                      <p className="text-sm text-gray-500 text-center py-4">
+                        No hay variables personalizadas creadas
+                      </p>
+                    )}
                   </div>
                 )}
               </div>
@@ -1276,114 +1520,9 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                       <SimpleEditor
                         content={templateFormData.content}
                         onChange={(content: string) => setTemplateFormData({ ...templateFormData, content })}
-                        customVariables={availableCustomVariables.filter(v => templateFormData.customVarIds.includes(v.id))}
+                        customVariables={availableCustomVariables}
                       />
                     </div>
-                  </div>
-
-                  {/* Sección de Variables Disponibles */}
-                  <div className="border rounded-lg p-4 space-y-4">
-                    <div>
-                      <Label className="text-base font-semibold">Variables Disponibles</Label>
-                      <p className="text-sm text-gray-500 mt-1">
-                        Selecciona las variables personalizadas que estarán disponibles en esta plantilla
-                      </p>
-                    </div>
-
-                    {/* Variables del contacto (siempre disponibles) */}
-                    <div>
-                      <p className="text-sm font-medium text-gray-700 mb-2">Variables del Contacto (siempre disponibles):</p>
-                      <div className="flex flex-wrap gap-2">
-                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm font-mono">
-                          {'{{nombre_contacto}}'}
-                        </span>
-                        <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-md text-sm font-mono">
-                          {'{{email_contacto}}'}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Selector de etapa para cargar variables */}
-                    {!editingTemplateId && (
-                      <div>
-                        <Label>Seleccionar Etapa (para cargar variables disponibles)</Label>
-                        <select
-                          value={selectedStageId || ''}
-                          onChange={async (e) => {
-                            const stageId = e.target.value ? parseInt(e.target.value) : null
-                            setSelectedStageId(stageId)
-                            if (stageId) {
-                              await loadVariablesFromStage(stageId)
-                            } else {
-                              setAvailableCustomVariables([])
-                            }
-                          }}
-                          className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        >
-                          <option value="">Selecciona una etapa para ver variables disponibles</option>
-                          {stages.map(stage => (
-                            <option key={stage.id} value={stage.id}>
-                              {stage.name} - {stage.campaign?.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    {/* Variables personalizadas disponibles */}
-                    {availableCustomVariables.length > 0 && (
-                      <div>
-                        <p className="text-sm font-medium text-gray-700 mb-2">Variables Personalizadas Disponibles:</p>
-                        <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                          {availableCustomVariables.map((variable) => {
-                            const isSelected = templateFormData.customVarIds.includes(variable.id)
-                            return (
-                              <div key={variable.id} className="flex items-center space-x-2">
-                                <input
-                                  type="checkbox"
-                                  id={`var-${variable.id}`}
-                                  checked={isSelected}
-                                  onChange={(e) => {
-                                    if (e.target.checked) {
-                                      setTemplateFormData({
-                                        ...templateFormData,
-                                        customVarIds: [...templateFormData.customVarIds, variable.id]
-                                      })
-                                    } else {
-                                      setTemplateFormData({
-                                        ...templateFormData,
-                                        customVarIds: templateFormData.customVarIds.filter(id => id !== variable.id)
-                                      })
-                                    }
-                                  }}
-                                  className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
-                                />
-                                <label
-                                  htmlFor={`var-${variable.id}`}
-                                  className="text-sm font-medium leading-none cursor-pointer flex-1"
-                                >
-                                  <span className="font-mono">{`{{${variable.name}}}`}</span>
-                                  {variable.description && (
-                                    <span className="text-gray-500 ml-2">- {variable.description}</span>
-                                  )}
-                                </label>
-                              </div>
-                            )
-                          })}
-                        </div>
-                        {templateFormData.customVarIds.length > 0 && (
-                          <p className="text-xs text-gray-500 mt-2">
-                            {templateFormData.customVarIds.length} {templateFormData.customVarIds.length === 1 ? 'variable seleccionada' : 'variables seleccionadas'}
-                          </p>
-                        )}
-                      </div>
-                    )}
-
-                    {availableCustomVariables.length === 0 && (editingTemplateId || selectedStageId) && (
-                      <p className="text-sm text-gray-500">
-                        No hay variables personalizadas disponibles en la etapa seleccionada.
-                      </p>
-                    )}
                   </div>
                 </div>
               </div>
@@ -1396,6 +1535,217 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
             </div>
           </div>
         )}
+
+        {/* Dialog para agregar nueva variable */}
+        <Dialog
+          open={showAddVariableDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowAddVariableDialog(false)
+              setNewVariableForm({ name: '', valor: '' })
+            } else {
+              setShowAddVariableDialog(open)
+            }
+          }}
+          title="Crear Variable Personalizada"
+          maxWidth="md"
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAddVariableDialog(false)
+                  setNewVariableForm({ name: '', valor: '' })
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleAddVariable}
+              >
+                Crear Variable
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="new-var-name">nombre_variable *</Label>
+              <Input
+                id="new-var-name"
+                type="text"
+                value={newVariableForm.name}
+                onChange={(e) => setNewVariableForm({ ...newVariableForm, name: e.target.value })}
+                placeholder="Ej: nombre_producto"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddVariable()
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Solo letras, números y guiones bajos. Debe empezar con letra o guión bajo.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="new-var-valor">valor_variable</Label>
+              <Input
+                id="new-var-valor"
+                type="text"
+                value={newVariableForm.valor}
+                onChange={(e) => setNewVariableForm({ ...newVariableForm, valor: e.target.value })}
+                placeholder="Ej: Camiseta"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleAddVariable()
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Valor por defecto para esta variable en la campaña.
+              </p>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* Dialog para editar variable de campaña */}
+        <Dialog
+          open={showEditVariableDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowEditVariableDialog(false)
+              setEditingVariableId(null)
+              setEditingVariableData({ name: '', valor: '' })
+            } else {
+              setShowEditVariableDialog(open)
+            }
+          }}
+          title="Editar Variable Personalizada de Campaña"
+          maxWidth="md"
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowEditVariableDialog(false)
+                  setEditingVariableId(null)
+                  setEditingVariableData({ name: '', valor: '' })
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveVariableEdit}
+              >
+                Guardar Cambios
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-var-name">nombre_variable *</Label>
+              <Input
+                id="edit-var-name"
+                type="text"
+                value={editingVariableData.name}
+                onChange={(e) => setEditingVariableData({ ...editingVariableData, name: e.target.value })}
+                placeholder="Ej: nombre_producto"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSaveVariableEdit()
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Solo letras, números y guiones bajos. Debe empezar con letra o guión bajo.
+              </p>
+            </div>
+            <div>
+              <Label htmlFor="edit-var-valor">valor_variable</Label>
+              <Input
+                id="edit-var-valor"
+                type="text"
+                value={editingVariableData.valor !== undefined && editingVariableData.valor !== null ? editingVariableData.valor : ''}
+                onChange={(e) => setEditingVariableData({ ...editingVariableData, valor: e.target.value })}
+                placeholder="Ej: Camiseta"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSaveVariableEdit()
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Valor por defecto para esta variable en la campaña.
+              </p>
+            </div>
+          </div>
+        </Dialog>
+
+        {/* Dialog para editar valor de variable para la etapa */}
+        <Dialog
+          open={showEditStageValueDialog}
+          onOpenChange={(open) => {
+            if (!open) {
+              setShowEditStageValueDialog(false)
+              setEditingStageValueData({ variableId: 0, variableName: '', valor: '' })
+            } else {
+              setShowEditStageValueDialog(open)
+            }
+          }}
+          title={`Editar Valor para Etapa - {{${editingStageValueData.variableName}}}`}
+          maxWidth="md"
+          footer={
+            <>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowEditStageValueDialog(false)
+                  setEditingStageValueData({ variableId: 0, variableName: '', valor: '' })
+                }}
+              >
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                onClick={handleSaveStageValue}
+              >
+                Guardar Valor
+              </Button>
+            </>
+          }
+        >
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-stage-valor">Valor para esta etapa</Label>
+              <Input
+                id="edit-stage-valor"
+                type="text"
+                value={editingStageValueData.valor}
+                onChange={(e) => setEditingStageValueData({ ...editingStageValueData, valor: e.target.value })}
+                placeholder="Ingresa el valor para esta etapa"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault()
+                    handleSaveStageValue()
+                  }
+                }}
+              />
+              <p className="text-xs text-gray-500 mt-1">
+                Este valor sobrescribirá el valor de la campaña solo para esta etapa. Deja vacío para usar el valor de la campaña.
+              </p>
+            </div>
+          </div>
+        </Dialog>
 
         {/* Modal de visualización de plantilla */}
         {viewingTemplate && (

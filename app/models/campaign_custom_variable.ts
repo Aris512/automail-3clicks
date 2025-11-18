@@ -23,6 +23,9 @@ export default class CampaignCustomVariable extends BaseModel {
   @column()
   declare valor: string | null
 
+  @column({ columnName: 'valor_stage' })
+  declare valorStage: string | null
+
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime
 

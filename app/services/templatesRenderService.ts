@@ -3,7 +3,6 @@ import Template from '#models/template'
 import Subscriber from '#models/subscriber'
 import CampaignStage from '#models/campaign_stage'
 import Campaign from '#models/campaign'
-import TemplateCustomVariable from '#models/template_custom_variable'
 import CampaignCustomVariable from '#models/campaign_custom_variable'
 
 export default class TemplateRenderService {
@@ -80,23 +79,10 @@ export default class TemplateRenderService {
     stage?: CampaignStage,
     campaign?: Campaign
   ): Promise<Record<string, string>> {
-    // Obtener variables personalizadas del template desde template_custom_variables
-    const templateVars = await TemplateCustomVariable.query()
-      .where('templateId', template.id)
-      .preload('customVariable')
-    
-    if (!templateVars || templateVars.length === 0) {
-      return {}
-    }
-
-    // Inicializar valores vacíos para todas las variables personalizadas
     const variableValues: Record<string, string> = {}
     
     // Si no hay campaign, retornar valores vacíos
     if (!campaign) {
-      for (const tv of templateVars) {
-        variableValues[tv.customVariable.name] = ''
-      }
       return variableValues
     }
 
@@ -116,26 +102,21 @@ export default class TemplateRenderService {
     }
 
     // Combinar: valores de etapa sobrescriben valores de campaña
-    // Solo incluir variables que están asociadas al template
-    for (const templateVar of templateVars) {
-      const varName = templateVar.customVariable.name
+    // Incluir todas las variables de la campaña/etapa
+    // Prioridad: valor_stage > valor
+    for (const campaignVar of campaignVars) {
+      const varName = campaignVar.customVariable.name
       
       // Buscar valor en stage (prioridad más alta)
-      const stageVar = stageVars.find(sv => sv.customVarId === templateVar.customVarId)
-      if (stageVar && stageVar.valor) {
-        variableValues[varName] = stageVar.valor
+      const stageVar = stageVars.find(sv => sv.customVarId === campaignVar.customVarId)
+      if (stageVar) {
+        // Priorizar valor_stage sobre valor en la etapa
+        variableValues[varName] = stageVar.valorStage || stageVar.valor || ''
         continue
       }
 
-      // Buscar valor en campaign
-      const campaignVar = campaignVars.find((cv: CampaignCustomVariable) => cv.customVarId === templateVar.customVarId)
-      if (campaignVar && campaignVar.valor) {
-        variableValues[varName] = campaignVar.valor
-        continue
-      }
-
-      // Si no hay valor, usar vacío
-      variableValues[varName] = ''
+      // Priorizar valor_stage sobre valor en la campaña
+      variableValues[varName] = campaignVar.valorStage || campaignVar.valor || ''
     }
     
     return variableValues

@@ -35,9 +35,36 @@ export default class CampaignsController {
       .preload('lists')
       .orderBy('createdAt', 'desc')
     
+    // Cargar variables personalizadas para cada campaña
+    const campaignsWithVariables = await Promise.all(
+      campaigns.map(async (campaign) => {
+        const campaignData = campaign.serialize()
+        
+        // Obtener variables con valores a nivel campaign
+        const campaignVariables = await CampaignCustomVariable.query()
+          .where('campaignId', campaign.id)
+          .whereNull('campaignStageId')
+          .preload('customVariable')
+        
+        // Crear el array de variables con valores
+        const customVariablesWithValues = campaignVariables.map(cv => ({
+          id: cv.customVariable.id,
+          name: cv.customVariable.name,
+          description: cv.customVariable.description,
+          valor: cv.valor,
+          valorStage: cv.valorStage,
+          // Valor final a mostrar: priorizar valor_stage sobre valor
+          valorFinal: cv.valorStage || cv.valor || ''
+        }))
+        
+        ;(campaignData as any).customVariablesWithValues = customVariablesWithValues
+        return campaignData
+      })
+    )
+    
     return response.json({
       success: true,
-      data: campaigns
+      data: campaignsWithVariables
     })
   }
 
@@ -226,11 +253,15 @@ export default class CampaignsController {
       .preload('customVariable')
     
     // Crear el array de variables con valores
+    // Priorizar valor_stage sobre valor
     const customVariablesWithValues = campaignVariables.map(cv => ({
       id: cv.customVariable.id,
       name: cv.customVariable.name,
       description: cv.customVariable.description,
-      valor: cv.valor
+      valor: cv.valor,
+      valorStage: cv.valorStage,
+      // Valor final a mostrar: priorizar valor_stage sobre valor
+      valorFinal: cv.valorStage || cv.valor || ''
     }))
 
     // Serializar la campaña y agregar customVariablesWithValues
@@ -762,7 +793,7 @@ export default class CampaignsController {
     }
 
     try {
-      // Las relaciones en campaign_custom_variables y template_custom_variables
+      // Las relaciones en campaign_custom_variables
       // se eliminarán automáticamente por el cascade delete
       await customVariable.delete()
 
