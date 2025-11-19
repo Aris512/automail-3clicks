@@ -648,50 +648,63 @@ export default class TemplatesController {
       const stage = stageTemplate.campaignStage
       console.log(`🔗 [UPDATE TEMPLATE] Plantilla asociada a etapa ${stage.id} de campaña ${stage.campaignId}`)
 
-      // Verificar si existen registros de variables para esta etapa
-      const existingStageVars = await CampaignCustomVariable.query()
+      // Actualizar registros de variables de nivel campaña (campaign_stage_id IS NULL) asignándoles el campaign_stage_id de la etapa
+      // Si no hay registros con campaign_stage_id IS NULL, crear nuevos registros para esta etapa
+      console.log(`📋 [UPDATE TEMPLATE] Verificando y creando registros de variables para la etapa ${stage.id}...`)
+
+      // Primero, buscar registros con campaign_stage_id IS NULL para actualizarlos
+      const campaignVarsNull = await CampaignCustomVariable.query()
         .where('campaignId', stage.campaignId)
-        .where('campaignStageId', stage.id)
-        .first()
+        .whereNull('campaignStageId')
+        .preload('customVariable')
 
-      // Si no existen registros para esta etapa, crearlos desde la campaña
-      if (!existingStageVars) {
-        console.log(`📋 [UPDATE TEMPLATE] Creando registros de variables para la etapa...`)
-        const campaignVars = await CampaignCustomVariable.query()
-          .where('campaignId', stage.campaignId)
-          .whereNull('campaignStageId')
-          .preload('customVariable')
-
-        // Actualizar registros existentes (incluso si campaign_stage_id es null) agregando campaign_stage_id = stage.id
-        // y valor_stage, o crear si no existe un registro
-        for (const campaignVar of campaignVars) {
-          // Buscar si existe un registro con campaign_stage_id = null
-          const existingVar = await CampaignCustomVariable.query()
-            .where('customVarId', campaignVar.customVarId)
-            .where('campaignId', stage.campaignId)
-            .whereNull('campaignStageId')
-            .first()
-
-          if (existingVar) {
-            // Actualizar el registro existente agregando campaign_stage_id y valor_stage
-            existingVar.campaignStageId = stage.id
-            existingVar.valorStage = campaignVar.valorStage
-            await existingVar.save()
-          } else {
-            // Si no existe, crear uno nuevo
-            await CampaignCustomVariable.create({
-              customVarId: campaignVar.customVarId,
-              campaignId: stage.campaignId,
-              campaignStageId: stage.id,
-              valor: campaignVar.valor,
-              valorStage: campaignVar.valorStage
-            })
+      // Si hay registros con campaign_stage_id IS NULL, actualizarlos
+      if (campaignVarsNull.length > 0) {
+        for (const campaignVar of campaignVarsNull) {
+          if (campaignVar.campaignStageId === null) {
+            campaignVar.campaignStageId = stage.id
+            await campaignVar.save()
+            console.log(`✅ [UPDATE TEMPLATE] Actualizado registro para variable ${campaignVar.customVariable.name} asignándolo a etapa ${stage.id}`)
           }
         }
-        console.log(`✅ [UPDATE TEMPLATE] Registros de variables creados para la etapa`)
       } else {
-        console.log(`ℹ️ [UPDATE TEMPLATE] Ya existen registros de variables para la etapa`)
+        // Si no hay registros con campaign_stage_id IS NULL, obtener todas las variables únicas de la campaña
+        // y crear nuevos registros para esta etapa
+        const allCampaignVars = await CampaignCustomVariable.query()
+          .where('campaignId', stage.campaignId)
+          .preload('customVariable')
+
+        // Obtener customVarIds únicos
+        const uniqueCustomVarIds = new Set<number>()
+        for (const cv of allCampaignVars) {
+          uniqueCustomVarIds.add(cv.customVarId)
+        }
+
+        // Para cada variable única, verificar si ya existe un registro para esta etapa
+        for (const customVarId of uniqueCustomVarIds) {
+          const existingStageVar = await CampaignCustomVariable.query()
+            .where('customVarId', customVarId)
+            .where('campaignId', stage.campaignId)
+            .where('campaignStageId', stage.id)
+            .first()
+
+          // Si no existe un registro para esta etapa, crear uno nuevo
+          if (!existingStageVar) {
+            // Obtener el primer registro de esta variable para copiar sus valores
+            const sourceVar = allCampaignVars.find(cv => cv.customVarId === customVarId)
+            if (sourceVar) {
+              await CampaignCustomVariable.create({
+                customVarId: customVarId,
+                campaignId: stage.campaignId,
+                campaignStageId: stage.id,
+                valorStage: sourceVar.valorStage
+              })
+              console.log(`✅ [UPDATE TEMPLATE] Creado nuevo registro para variable ${sourceVar.customVariable.name} en etapa ${stage.id}`)
+            }
+          }
+        }
       }
+      console.log(`✅ [UPDATE TEMPLATE] Proceso de verificación de variables completado para la etapa`)
     } else {
       console.log(`ℹ️ [UPDATE TEMPLATE] Plantilla no asociada a ninguna etapa`)
     }

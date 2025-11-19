@@ -1,7 +1,6 @@
 import { DateTime } from 'luxon'
 import { BaseModel, column, manyToMany } from '@adonisjs/lucid/orm'
 import Campaign from './campaign.js'
-import Template from './template.js'
 import type { ManyToMany } from '@adonisjs/lucid/types/relations'
 
 export default class CustomVariable extends BaseModel {
@@ -13,6 +12,9 @@ export default class CustomVariable extends BaseModel {
 
   @column()
   declare description?: string
+
+  @column()
+  declare valor: string | null
 
   @column.dateTime({ autoCreate: true })
   declare createdAt: DateTime

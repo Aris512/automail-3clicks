@@ -103,20 +103,37 @@ export default class TemplateRenderService {
 
     // Combinar: valores de etapa sobrescriben valores de campaña
     // Incluir todas las variables de la campaña/etapa
-    // Prioridad: valor_stage > valor
+    // Prioridad: valor_stage de etapa > valor_stage de campaña > valor de custom_variable
+    
+    // Primero procesar variables de campaña
     for (const campaignVar of campaignVars) {
       const varName = campaignVar.customVariable.name
       
       // Buscar valor en stage (prioridad más alta)
       const stageVar = stageVars.find(sv => sv.customVarId === campaignVar.customVarId)
       if (stageVar) {
-        // Priorizar valor_stage sobre valor en la etapa
-        variableValues[varName] = stageVar.valorStage || stageVar.valor || ''
+        // Si hay variable en etapa, priorizar: valor_stage de etapa > valor_stage de campaña > valor de custom_variable
+        variableValues[varName] = stageVar.valorStage || campaignVar.valorStage || campaignVar.customVariable.valor || ''
         continue
       }
 
-      // Priorizar valor_stage sobre valor en la campaña
-      variableValues[varName] = campaignVar.valorStage || campaignVar.valor || ''
+      // Si no hay variable en etapa, usar: valor_stage de campaña > valor de custom_variable
+      variableValues[varName] = campaignVar.valorStage || campaignVar.customVariable.valor || ''
+    }
+    
+    // Luego procesar variables que solo existen en la etapa (no en la campaña)
+    if (stage) {
+      for (const stageVar of stageVars) {
+        const varName = stageVar.customVariable.name
+        
+        // Si la variable ya fue procesada (existe en campaña), saltarla
+        if (variableValues.hasOwnProperty(varName)) {
+          continue
+        }
+        
+        // Variable solo en etapa: usar valor_stage de etapa > valor de custom_variable
+        variableValues[varName] = stageVar.valorStage || stageVar.customVariable.valor || ''
+      }
     }
     
     return variableValues
@@ -149,6 +166,13 @@ export default class TemplateRenderService {
 
     // Obtener valores de variables personalizadas en cascada
     const customVariableValues = await this.getVariableValues(template, stage, campaign)
+    
+    // Debug: Log de variables personalizadas obtenidas
+    if (Object.keys(customVariableValues).length > 0) {
+      console.log(`📋 [TemplateRenderService] Variables personalizadas obtenidas para template ${template.id}:`, customVariableValues)
+    } else {
+      console.log(`⚠️ [TemplateRenderService] No se encontraron variables personalizadas para template ${template.id}, stage ${stage?.id || 'N/A'}, campaign ${campaign?.id || 'N/A'}`)
+    }
 
     // Preparar los datos del suscriptor para el renderizado
     // Mustache escapa automáticamente HTML en variables normales, pero para HTML/Markdown

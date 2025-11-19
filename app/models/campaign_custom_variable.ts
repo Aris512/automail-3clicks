@@ -20,9 +20,6 @@ export default class CampaignCustomVariable extends BaseModel {
   @column({ columnName: 'campaign_stage_id' })
   declare campaignStageId: number | null
 
-  @column()
-  declare valor: string | null
-
   @column({ columnName: 'valor_stage' })
   declare valorStage: string | null
 

@@ -555,14 +555,20 @@ export default function Campanas({ user }: CampanasProps) {
 
       const result = await response.json()
 
-      if (result.success) {
+      if (response.ok && result.success) {
         showSuccess('Éxito', 'Se editó correctamente la variable', 3000)
         setEditingVariableId(null)
         setEditingVariableData({ name: '', valor: '' })
         setShowEditVariableDialog(false)
         // Recargar las variables de la campaña
         await loadCampaignCustomVariables(editingCampaign.id)
-        await handleEdit(editingCampaign)
+        // Recargar el formulario de edición sin mostrar errores si algo falla
+        try {
+          await handleEdit(editingCampaign)
+        } catch (error) {
+          console.error('Error al recargar formulario después de actualizar variable:', error)
+          // No mostrar error al usuario ya que la variable se actualizó correctamente
+        }
       } else {
         showError('Error al actualizar', result.message || 'No se pudo actualizar la variable')
       }

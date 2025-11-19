@@ -547,11 +547,18 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
         setStageVariables(result.data.customVariablesWithValues)
         setStageFormData(prev => ({
           ...prev,
+          // Incluir todas las variables que tienen un valor_stage de la etapa (isOverridden: true y valorStage existe)
+          // Esto permite precargar los valores de etapa en el formulario
           customVariableValues: result.data.customVariablesWithValues
-            .filter((v: CustomVariable) => v.isOverridden)
+            .filter((v: CustomVariable) => {
+              // Incluir solo variables que tienen un valor_stage definido (puede ser string vacío)
+              return v.isOverridden && 
+                     v.valorStage !== null && 
+                     v.valorStage !== undefined
+            })
             .map((v: CustomVariable) => ({
               customVarId: v.id,
-              valor: v.valor || ''
+              valor: String(v.valorStage || '') // Usar valor_stage de la etapa específica
             }))
         }))
       } else {
@@ -597,14 +604,38 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     })
     setEditingTemplateId(template.id)
     
-    // Cargar variables disponibles desde la campaña asociada si la plantilla está asociada a una etapa
+    // Cargar variables disponibles desde la etapa asociada si la plantilla está asociada a una etapa
     const associatedStage = stages.find(s => s.templates?.some(t => t.id === template.id))
-    if (associatedStage && associatedStage.campaignId) {
-      // Cargar variables directamente desde la campaña
+    if (associatedStage && associatedStage.id) {
+      // Cargar variables desde la etapa para obtener valor_stage
+      await loadVariablesFromStage(associatedStage.id)
+    } else if (associatedStage && associatedStage.campaignId) {
+      // Si no hay etapa pero hay campaña, cargar desde la campaña
       await loadVariablesFromCampaign(associatedStage.campaignId)
     }
     
     setShowTemplateForm(true)
+  }
+
+  // Cargar variables desde una etapa (para obtener valor_stage)
+  const loadVariablesFromStage = async (stageId: number) => {
+    try {
+      const response = await fetch(`/campaign-stages/${stageId}`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+      const result = await response.json()
+      if (result.success && result.data?.customVariablesWithValues) {
+        // Las variables ya vienen con valorFinal que prioriza valor_stage sobre valor
+        setAvailableCustomVariables(result.data.customVariablesWithValues)
+      }
+    } catch (error) {
+      console.error('Error al cargar variables de la etapa:', error)
+    }
   }
 
   // Cargar variables desde una campaña
@@ -757,40 +788,27 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     }
   }
 
-  // Abrir modal de edición de variable de campaña
-  const handleOpenEditVariable = (variable: CustomVariable) => {
-    // Validar que hay una campaña seleccionada
-    if (!stageFormData.campaignId) {
-      showError('Campaña requerida', 'Debes seleccionar una campaña primero')
-      return
-    }
-
-    // Validar que la variable pertenece a la campaña de la etapa
-    const variableInCampaign = stageVariables.find(v => v.id === variable.id)
-    if (!variableInCampaign) {
-      showError('Variable no válida', 'Esta variable no pertenece a la campaña de la etapa')
-      return
-    }
-
-    // Obtener el valor de la variable desde stageVariables (valor de campaña)
-    let valor = ''
-    if (variableInCampaign) {
-      valor = variableInCampaign.valorFinal || variableInCampaign.valor || ''
-    }
-    
-    setEditingVariableId(variable.id)
-    setEditingVariableData({
-      name: variable.name,
-      valor: valor
-    })
-    setShowEditVariableDialog(true)
-  }
-
   // Abrir modal de edición de valor para la etapa
   const handleOpenEditStageValue = (variable: CustomVariable) => {
+    // Priorizar valor_stage de la etapa sobre valor de custom_variables
+    // Primero verificar si hay un valor en customVariableValues (valor sobrescrito en el formulario)
     const existingValue = stageFormData.customVariableValues.find(v => v.customVarId === variable.id)
-    const valorFinal = variable.valorFinal || (variable.valorStage || variable.valor || '')
-    const currentValor = existingValue?.valor || valorFinal || ''
+    
+    // Determinar el valor a mostrar:
+    // 1. Si hay un valor sobrescrito en customVariableValues, usarlo
+    // 2. Si no, usar valor_stage de la etapa (si existe y no es null/undefined)
+    // 3. Si no hay valor_stage, usar el valor de custom_variables
+    let currentValor = ''
+    if (existingValue) {
+      // Si hay un valor en customVariableValues, usarlo (ya debería ser valor_stage)
+      currentValor = existingValue.valor || ''
+    } else if (variable.valorStage !== null && variable.valorStage !== undefined) {
+      // Si no hay valor en customVariableValues pero hay valor_stage, usarlo
+      currentValor = String(variable.valorStage)
+    } else {
+      // Si no hay valor_stage, usar el valor de custom_variables
+      currentValor = variable.valor || ''
+    }
     
     setEditingStageValueData({
       variableId: variable.id,
@@ -802,7 +820,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
 
   // Guardar valor de etapa
   const handleSaveStageValue = () => {
-    if (!editingStageValueData.variableId) return
+    if (!editingStageValueData.variableId || !editingStageId) return
 
     const updated = stageFormData.customVariableValues.filter(v => v.customVarId !== editingStageValueData.variableId)
     if (editingStageValueData.valor.trim()) {
@@ -810,9 +828,6 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
         customVarId: editingStageValueData.variableId, 
         valor: editingStageValueData.valor.trim() 
       })
-      showSuccess('Valor actualizado', 'El valor para esta etapa se ha actualizado correctamente', 2000)
-    } else {
-      showSuccess('Valor restaurado', 'Se restauró el valor de la campaña para esta etapa', 2000)
     }
     
     setStageFormData({
@@ -822,6 +837,9 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     
     setShowEditStageValueDialog(false)
     setEditingStageValueData({ variableId: 0, variableName: '', valor: '' })
+    
+    // Nota: El valor se guardará cuando se guarde la etapa completa
+    showSuccess('Valor actualizado', 'El valor se guardará cuando guardes la etapa', 2000)
   }
 
   // Guardar edición de variable personalizada
@@ -1384,30 +1402,33 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                 {/* Variables heredadas de la campaign */}
                 {stageFormData.campaignId && (
                   <div className="border rounded-lg p-4 space-y-4 mt-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <Label className="text-base font-semibold">Gestionar Variables Personalizadas</Label>
-                        <p className="text-sm text-gray-500 mt-1">
-                          Variables de la campaña. Puedes sobrescribir valores específicos para esta etapa.
-                        </p>
-                      </div>
-                      <Button
-                        type="button"
-                        onClick={() => setShowAddVariableDialog(true)}
-                        className="bg-primary hover:bg-primary/90"
-                      >
-                        <Plus className="h-4 w-4 mr-2" />
-                        Agregar Variable
-                      </Button>
+                    <div>
+                      <Label className="text-base font-semibold">Gestionar Variables Personalizadas</Label>
+                      <p className="text-sm text-gray-500 mt-1">
+                        Variables de la campaña. Puedes sobrescribir valores específicos para esta etapa.
+                      </p>
                     </div>
 
                     {stageVariables.length > 0 ? (
                       <div className="space-y-2">
                         {stageVariables.map((variable) => {
+                          // Priorizar valor_stage de la etapa sobre valor de custom_variables
+                          // Verificar si existe valor_stage (no null ni undefined)
+                          const tieneValorStage = variable.valorStage !== null && variable.valorStage !== undefined
+                          
+                          // Determinar el valor a mostrar: priorizar valor_stage sobre valor
+                          let valorAMostrar = ''
+                          if (tieneValorStage) {
+                            // Si hay valor_stage, usarlo (puede ser string vacío)
+                            valorAMostrar = String(variable.valorStage)
+                          } else {
+                            // Si no hay valor_stage, usar el valor de custom_variables
+                            valorAMostrar = variable.valor || ''
+                          }
+                          
+                          // Verificar si hay un valor sobrescrito en el formulario
                           const existingValue = stageFormData.customVariableValues.find(v => v.customVarId === variable.id)
-                          // Priorizar valor_stage sobre valor (usar valorFinal si está disponible, si no calcular)
-                          const valorFinal = variable.valorFinal || (variable.valorStage || variable.valor || '')
-                          const isOverridden = !!existingValue
+                          const isOverridden = !!existingValue || tieneValorStage
 
                           return (
                             <div key={variable.id} className="border rounded-md p-3 bg-gray-50">
@@ -1417,17 +1438,20 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                     <span className="text-sm font-semibold">
                                       {`{{${variable.name}}}`}
                                     </span>
-                                    {isOverridden && (
+                                    {tieneValorStage && (
+                                      <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">
+                                        Valor de etapa
+                                      </span>
+                                    )}
+                                    {isOverridden && !tieneValorStage && (
                                       <span className="text-xs px-2 py-0.5 rounded bg-blue-100 text-blue-700">
                                         Valor sobrescrito
                                       </span>
                                     )}
                                   </div>
-                                  {valorFinal && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      Valor: <span className="font-mono">{valorFinal}</span>
-                                    </p>
-                                  )}
+                                  <p className="text-xs text-gray-500 mt-1">
+                                    Valor: <span className="font-mono">{valorAMostrar || '(vacío)'}</span>
+                                  </p>
                                 </div>
                                 <div className="flex gap-2">
                                   <Button
@@ -1436,15 +1460,6 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                     size="sm"
                                     onClick={() => handleOpenEditStageValue(variable)}
                                     title="Editar valor para esta etapa"
-                                  >
-                                    <Edit className="h-4 w-4" />
-                                  </Button>
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={() => handleOpenEditVariable(variable)}
-                                    title="Editar variable de campaña"
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
@@ -1524,6 +1539,53 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                       />
                     </div>
                   </div>
+
+                  {/* Variables personalizadas disponibles */}
+                  {availableCustomVariables.length > 0 && (
+                    <div className="border rounded-lg p-4 space-y-3 mt-4">
+                      <div>
+                        <Label className="text-base font-semibold">Variables Personalizadas Disponibles</Label>
+                        <p className="text-sm text-gray-500 mt-1">
+                          Variables de la etapa asociada. Se muestra valor_stage si existe, de lo contrario el valor de la campaña.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        {availableCustomVariables.map((variable) => {
+                          // Priorizar valor_stage sobre valor (usar valorFinal si está disponible, si no calcular)
+                          const valorFinal = variable.valorFinal || (variable.valorStage || variable.valor || '')
+
+                          return (
+                            <div key={variable.id} className="border rounded-md p-3 bg-gray-50">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-sm font-semibold">
+                                      {`{{${variable.name}}}`}
+                                    </span>
+                                    {variable.valorStage && (
+                                      <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">
+                                        Valor de etapa
+                                      </span>
+                                    )}
+                                  </div>
+                                  {valorFinal && (
+                                    <p className="text-xs text-gray-500 mt-1">
+                                      Valor: <span className="font-mono">{valorFinal}</span>
+                                    </p>
+                                  )}
+                                  {variable.description && (
+                                    <p className="text-xs text-gray-400 mt-1">
+                                      {variable.description}
+                                    </p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="flex items-center justify-end gap-3 p-6 border-t bg-gray-50">

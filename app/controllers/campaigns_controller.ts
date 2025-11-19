@@ -40,21 +40,34 @@ export default class CampaignsController {
       campaigns.map(async (campaign) => {
         const campaignData = campaign.serialize()
         
-        // Obtener variables con valores a nivel campaign
-        const campaignVariables = await CampaignCustomVariable.query()
+        // Obtener TODAS las variables de la campaña (independientemente de campaign_stage_id)
+        const allCampaignVariables = await CampaignCustomVariable.query()
           .where('campaignId', campaign.id)
-          .whereNull('campaignStageId')
           .preload('customVariable')
         
-        // Crear el array de variables con valores
-        const customVariablesWithValues = campaignVariables.map(cv => ({
+        // Agrupar por customVarId y priorizar las que tienen campaignStageId IS NULL
+        const variablesMap = new Map<number, CampaignCustomVariable>()
+        
+        for (const cv of allCampaignVariables) {
+          const customVarId = cv.customVarId
+          const existing = variablesMap.get(customVarId)
+          
+          // Si no existe en el mapa, agregarlo
+          // Si existe, priorizar la que tiene campaignStageId IS NULL
+          if (!existing || (cv.campaignStageId === null && existing.campaignStageId !== null)) {
+            variablesMap.set(customVarId, cv)
+          }
+        }
+        
+        // Crear el array de variables con valores (solo una instancia por variable)
+        const customVariablesWithValues = Array.from(variablesMap.values()).map(cv => ({
           id: cv.customVariable.id,
           name: cv.customVariable.name,
           description: cv.customVariable.description,
-          valor: cv.valor,
+          valor: cv.customVariable.valor,
           valorStage: cv.valorStage,
           // Valor final a mostrar: priorizar valor_stage sobre valor
-          valorFinal: cv.valorStage || cv.valor || ''
+          valorFinal: cv.valorStage || cv.customVariable.valor || ''
         }))
         
         ;(campaignData as any).customVariablesWithValues = customVariablesWithValues
@@ -169,20 +182,27 @@ export default class CampaignsController {
             console.log(`[CAMPAIGN CREATE] Creando nueva variable personalizada: ${varName}`)
             customVariable = await CustomVariable.create({
               name: varName,
-              description: varDescription
+              description: varDescription,
+              valor: varValor
             })
             console.log(`[CAMPAIGN CREATE] Variable personalizada creada con ID: ${customVariable.id}`)
           } else {
-            console.log(`[CAMPAIGN CREATE] Variable personalizada ya existe con ID: ${customVariable.id}`)
+            // Actualizar el valor si se proporcionó uno nuevo
+            if (varValor !== null) {
+              customVariable.valor = varValor
+              await customVariable.save()
+              console.log(`[CAMPAIGN CREATE] Valor actualizado para variable personalizada ID: ${customVariable.id}`)
+            } else {
+              console.log(`[CAMPAIGN CREATE] Variable personalizada ya existe con ID: ${customVariable.id}`)
+            }
           }
 
-          // Crear la relación en campaign_custom_variables con el valor
-          console.log(`[CAMPAIGN CREATE] Creando relación campaign_custom_variables: campaignId=${campaign.id}, customVarId=${customVariable.id}, valor="${varValor}"`)
+          // Crear la relación en campaign_custom_variables (sin valor, ya que ahora está en custom_variables)
+          console.log(`[CAMPAIGN CREATE] Creando relación campaign_custom_variables: campaignId=${campaign.id}, customVarId=${customVariable.id}`)
           const campaignCustomVar = await CampaignCustomVariable.create({
             customVarId: customVariable.id,
             campaignId: campaign.id,
-            campaignStageId: null, // null = valor a nivel campaign
-            valor: varValor
+            campaignStageId: null // null = valor a nivel campaign
           })
           console.log(`[CAMPAIGN CREATE] Relación creada con ID: ${campaignCustomVar.id}`)
         }
@@ -246,22 +266,35 @@ export default class CampaignsController {
       })
     }
 
-    // Obtener variables con valores a nivel campaign
-    const campaignVariables = await CampaignCustomVariable.query()
+    // Obtener TODAS las variables de la campaña (independientemente de campaign_stage_id)
+    const allCampaignVariables = await CampaignCustomVariable.query()
       .where('campaignId', campaign.id)
-      .whereNull('campaignStageId')
       .preload('customVariable')
     
-    // Crear el array de variables con valores
+    // Agrupar por customVarId y priorizar las que tienen campaignStageId IS NULL
+    const variablesMap = new Map<number, CampaignCustomVariable>()
+    
+    for (const cv of allCampaignVariables) {
+      const customVarId = cv.customVarId
+      const existing = variablesMap.get(customVarId)
+      
+      // Si no existe en el mapa, agregarlo
+      // Si existe, priorizar la que tiene campaignStageId IS NULL
+      if (!existing || (cv.campaignStageId === null && existing.campaignStageId !== null)) {
+        variablesMap.set(customVarId, cv)
+      }
+    }
+    
+    // Crear el array de variables con valores (solo una instancia por variable)
     // Priorizar valor_stage sobre valor
-    const customVariablesWithValues = campaignVariables.map(cv => ({
+    const customVariablesWithValues = Array.from(variablesMap.values()).map(cv => ({
       id: cv.customVariable.id,
       name: cv.customVariable.name,
       description: cv.customVariable.description,
-      valor: cv.valor,
+      valor: cv.customVariable.valor,
       valorStage: cv.valorStage,
       // Valor final a mostrar: priorizar valor_stage sobre valor
-      valorFinal: cv.valorStage || cv.valor || ''
+      valorFinal: cv.valorStage || cv.customVariable.valor || ''
     }))
 
     // Serializar la campaña y agregar customVariablesWithValues
@@ -384,18 +417,24 @@ export default class CampaignsController {
 
       // Actualizar variables personalizadas si se proporcionaron
       if (data.customVariables !== undefined) {
-        // Obtener variables actuales a nivel campaign
-        const currentCampaignVars = await CampaignCustomVariable.query()
+        // Obtener todas las variables actuales de la campaña (independientemente de campaign_stage_id)
+        const allCurrentCampaignVars = await CampaignCustomVariable.query()
           .where('campaignId', campaign.id)
-          .whereNull('campaignStageId')
 
-        // Eliminar todas las variables actuales a nivel campaign
-        for (const cv of currentCampaignVars) {
-          await cv.delete()
+        // Crear un mapa de las variables actuales por customVarId para búsqueda rápida
+        const currentVarsMap = new Map<number, CampaignCustomVariable>()
+        for (const cv of allCurrentCampaignVars) {
+          // Priorizar registros de nivel campaña (campaignStageId IS NULL)
+          const existing = currentVarsMap.get(cv.customVarId)
+          if (!existing || (cv.campaignStageId === null && existing.campaignStageId !== null)) {
+            currentVarsMap.set(cv.customVarId, cv)
+          }
         }
 
-        // Crear nuevas variables si se proporcionaron
+        // Procesar las variables proporcionadas
         if (Array.isArray(data.customVariables) && data.customVariables.length > 0) {
+          const processedVarIds = new Set<number>()
+
           for (const customVar of data.customVariables) {
             if (!customVar.name || !customVar.name.trim()) {
               continue
@@ -413,29 +452,68 @@ export default class CampaignsController {
             if (!customVariable) {
               customVariable = await CustomVariable.create({
                 name: varName,
-                description: varDescription
+                description: varDescription,
+                valor: varValor
               })
+            } else {
+              // Actualizar el valor en CustomVariable si se proporcionó uno nuevo
+              if (varValor !== null) {
+                customVariable.valor = varValor
+                await customVariable.save()
+              }
             }
 
-            // Verificar si ya existe una relación para esta variable en esta campaña
-            const existingRelation = await CampaignCustomVariable.query()
+            // Buscar si ya existe una relación para esta variable en esta campaña
+            // Priorizar buscar registros de nivel campaña (campaignStageId IS NULL)
+            let existingRelation = await CampaignCustomVariable.query()
               .where('campaignId', campaign.id)
               .where('customVarId', customVariable.id)
               .whereNull('campaignStageId')
               .first()
 
+            // Si no existe de nivel campaña, buscar cualquier registro con este customVarId y campaignId
+            if (!existingRelation) {
+              existingRelation = await CampaignCustomVariable.query()
+                .where('campaignId', campaign.id)
+                .where('customVarId', customVariable.id)
+                .first()
+            }
+
             if (existingRelation) {
-              existingRelation.valor = varValor
-              await existingRelation.save()
+              // Si es un registro de nivel etapa, crear uno nuevo de nivel campaña
+              // (no modificar el de nivel etapa)
+              if (existingRelation.campaignStageId !== null) {
+                await CampaignCustomVariable.create({
+                  customVarId: customVariable.id,
+                  campaignId: campaign.id,
+                  campaignStageId: null
+                })
+              }
+              // Si ya existe de nivel campaña, no necesitamos hacer nada más
             } else {
-              // Crear la relación en campaign_custom_variables con el valor
+              // Crear nueva relación de nivel campaña
               await CampaignCustomVariable.create({
                 customVarId: customVariable.id,
                 campaignId: campaign.id,
-                campaignStageId: null,
-                valor: varValor
+                campaignStageId: null
               })
             }
+
+            processedVarIds.add(customVariable.id)
+          }
+
+          // Eliminar variables de nivel campaña que ya no están en la lista
+          const varsToRemove = Array.from(currentVarsMap.values())
+            .filter(cv => cv.campaignStageId === null && !processedVarIds.has(cv.customVarId))
+          
+          for (const cv of varsToRemove) {
+            await cv.delete()
+          }
+        } else {
+          // Si no se proporcionaron variables, eliminar todas las variables de nivel campaña
+          const campaignLevelVars = allCurrentCampaignVars.filter(cv => cv.campaignStageId === null)
+          for (const cv of campaignLevelVars) {
+            await cv.delete()
           }
         }
       }
@@ -618,16 +696,17 @@ export default class CampaignsController {
         })
       }
 
-      // Crear la variable personalizada
+      // Crear la variable personalizada con el valor si se proporcionó
+      const valor = data.valor?.trim() || null
       const customVariable = await CustomVariable.create({
         name: varName,
-        description: varDescription
+        description: varDescription,
+        valor: valor
       })
 
-      // Si se proporcionó campaignId y valor, crear la relación en campaign_custom_variables
-      if (data.campaignId && data.valor !== undefined) {
+      // Si se proporcionó campaignId, crear la relación en campaign_custom_variables
+      if (data.campaignId) {
         const campaignId = parseInt(data.campaignId)
-        const valor = data.valor?.trim() || null
 
         // Verificar que la campaña existe y pertenece al tenant
         const campaign = await Campaign.query()
@@ -639,8 +718,7 @@ export default class CampaignsController {
           await CampaignCustomVariable.create({
             customVarId: customVariable.id,
             campaignId: campaignId,
-            campaignStageId: null, // null para valores a nivel de campaña
-            valor: valor
+            campaignStageId: null // null para valores a nivel de campaña
           })
         }
       }
@@ -711,14 +789,22 @@ export default class CampaignsController {
       }
 
       customVariable.name = name.trim()
-      customVariable.description = description?.trim() || null
+      if (description !== undefined) {
+        customVariable.description = description?.trim() || null
+      }
+      
+      // Actualizar el valor en custom_variables si se proporcionó
+      if (valor !== undefined) {
+        const valorStr = valor === null || valor === '' ? null : (typeof valor === 'string' ? valor.trim() : String(valor))
+        customVariable.valor = valorStr || null
+      }
+      
       await customVariable.save()
 
-      // Si se proporcionó campaignId, actualizar o crear la relación en campaign_custom_variables
+      // Si se proporcionó campaignId, asegurarse de que exista la relación en campaign_custom_variables
+      // (solo la relación, sin guardar valor porque ahora se guarda en custom_variables)
       if (campaignId) {
         const campaignIdInt = typeof campaignId === 'string' ? parseInt(campaignId) : campaignId
-        // Manejar el valor: si es undefined, mantener null; si es string, hacer trim; si es null, mantener null
-        const valorStr = valor === undefined ? null : (typeof valor === 'string' ? (valor.trim() || null) : valor)
 
         // Verificar que la campaña existe y pertenece al tenant
         const campaign = await Campaign.query()
@@ -727,40 +813,42 @@ export default class CampaignsController {
           .first()
 
         if (campaign) {
-          // Buscar relación existente
-          const existingRelation = await CampaignCustomVariable.query()
+          // Buscar relación existente de nivel campaña (campaignStageId IS NULL)
+          const existingCampaignRelation = await CampaignCustomVariable.query()
             .where('customVarId', customVariable.id)
             .where('campaignId', campaignIdInt)
             .whereNull('campaignStageId')
             .first()
 
-          if (existingRelation) {
-            // Actualizar valor existente
-            existingRelation.valor = valorStr
-            await existingRelation.save()
-          } else {
-            // Crear nueva relación
+          // Si no existe la relación, crearla (sin valor, porque el valor está en custom_variables)
+          if (!existingCampaignRelation) {
             await CampaignCustomVariable.create({
               customVarId: customVariable.id,
               campaignId: campaignIdInt,
-              campaignStageId: null,
-              valor: valorStr
+              campaignStageId: null
             })
           }
         }
       }
 
-      return response.json({
+      // Recargar la variable para obtener los datos actualizados después de todas las operaciones
+      await customVariable.refresh()
+
+      return response.status(200).json({
         success: true,
         message: 'Variable personalizada actualizada exitosamente',
         data: customVariable
       })
     } catch (error) {
       console.error('Error al actualizar variable personalizada:', error)
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      const errorStack = error instanceof Error ? error.stack : undefined
+      console.error('Error stack:', errorStack)
+      
       return response.status(500).json({
         success: false,
         message: 'Error al actualizar la variable personalizada',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: errorMessage
       })
     }
   }
