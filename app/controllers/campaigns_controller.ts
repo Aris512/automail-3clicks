@@ -174,29 +174,15 @@ export default class CampaignsController {
 
           console.log(`[CAMPAIGN CREATE] Procesando variable: nombre="${varName}", descripción="${varDescription}", valor="${varValor}"`)
 
-          // Crear o encontrar la variable personalizada
-          let customVariable = await CustomVariable.query()
-            .where('name', varName)
-            .first()
-
-          if (!customVariable) {
-            console.log(`[CAMPAIGN CREATE] Creando nueva variable personalizada: ${varName}`)
-            customVariable = await CustomVariable.create({
-              name: varName,
-              description: varDescription,
-              valor: varValor
-            })
-            console.log(`[CAMPAIGN CREATE] Variable personalizada creada con ID: ${customVariable.id}`)
-          } else {
-            // Actualizar el valor si se proporcionó uno nuevo
-            if (varValor !== null) {
-              customVariable.valor = varValor
-              await customVariable.save()
-              console.log(`[CAMPAIGN CREATE] Valor actualizado para variable personalizada ID: ${customVariable.id}`)
-            } else {
-              console.log(`[CAMPAIGN CREATE] Variable personalizada ya existe con ID: ${customVariable.id}`)
-            }
-          }
+          // IMPORTANTE: Siempre crear una nueva variable única para esta campaña
+          // No buscar variables existentes por nombre para evitar compartir variables entre campañas
+          console.log(`[CAMPAIGN CREATE] Creando nueva variable personalizada única para campaña ${campaign.id}: ${varName}`)
+          const customVariable = await CustomVariable.create({
+            name: varName,
+            description: varDescription,
+            valor: varValor
+          })
+          console.log(`[CAMPAIGN CREATE] Variable personalizada creada con ID: ${customVariable.id}`)
 
           // Crear la relación en campaign_custom_variables (sin valor, ya que ahora está en custom_variables)
           console.log(`[CAMPAIGN CREATE] Creando relación campaign_custom_variables: campaignId=${campaign.id}, customVarId=${customVariable.id}`)
@@ -421,14 +407,22 @@ export default class CampaignsController {
         // Obtener todas las variables actuales de la campaña (independientemente de campaign_stage_id)
         const allCurrentCampaignVars = await CampaignCustomVariable.query()
           .where('campaignId', campaign.id)
+          .preload('customVariable')
 
         // Crear un mapa de las variables actuales por customVarId para búsqueda rápida
         const currentVarsMap = new Map<number, CampaignCustomVariable>()
+        // Crear un mapa por nombre de variable para búsqueda rápida (solo nivel campaña)
+        const varsByNameMap = new Map<string, CampaignCustomVariable>()
+        
         for (const cv of allCurrentCampaignVars) {
           // Priorizar registros de nivel campaña (campaignStageId IS NULL)
           const existing = currentVarsMap.get(cv.customVarId)
           if (!existing || (cv.campaignStageId === null && existing.campaignStageId !== null)) {
             currentVarsMap.set(cv.customVarId, cv)
+            // Si es de nivel campaña, agregar al mapa por nombre
+            if (cv.campaignStageId === null && cv.customVariable) {
+              varsByNameMap.set(cv.customVariable.name, cv)
+            }
           }
         }
 
@@ -444,60 +438,197 @@ export default class CampaignsController {
             const varName = customVar.name.trim()
             const varDescription = customVar.description?.trim() || null
             const varValor = customVar.valor?.trim() || null
+            const varId = customVar.id ? (typeof customVar.id === 'string' ? parseInt(customVar.id) : customVar.id) : null
 
-            // Crear o encontrar la variable personalizada
-            let customVariable = await CustomVariable.query()
-              .where('name', varName)
-              .first()
+            let customVariable: CustomVariable
+            let existingRelation: CampaignCustomVariable | undefined
 
-            if (!customVariable) {
-              customVariable = await CustomVariable.create({
-                name: varName,
-                description: varDescription,
-                valor: varValor
-              })
-            } else {
-              // Actualizar el valor en CustomVariable si se proporcionó uno nuevo
-              if (varValor !== null) {
-                customVariable.valor = varValor
-                await customVariable.save()
+            // IMPORTANTE: Si se proporciona un ID (y es positivo, no negativo), buscar por ID primero
+            // Los IDs negativos son variables nuevas que aún no existen en el backend
+            if (varId && varId > 0) {
+              // Buscar la relación por customVarId en el mapa
+              existingRelation = currentVarsMap.get(varId)
+              
+              if (existingRelation) {
+                // Encontramos la variable existente por ID
+                customVariable = existingRelation.customVariable
+                
+                // Verificar que la relación sea de nivel campaña (no de etapa)
+                if (existingRelation.campaignStageId === null) {
+                  // Actualizar nombre, descripción y valor
+                  const oldName = customVariable.name
+                  const nameChanged = oldName !== varName
+                  customVariable.name = varName
+                  if (varDescription !== null) {
+                    customVariable.description = varDescription
+                  }
+                  if (varValor !== null) {
+                    customVariable.valor = varValor
+                  }
+                  await customVariable.save()
+                  
+                  // Si el nombre cambió, actualizar el mapa por nombre para las siguientes iteraciones
+                  if (nameChanged) {
+                    // Remover el nombre antiguo del mapa
+                    varsByNameMap.delete(oldName)
+                    // Agregar el nuevo nombre
+                    varsByNameMap.set(varName, existingRelation)
+                  }
+                  // NO crear una nueva relación, ya existe
+                } else {
+                  // La relación es de nivel etapa, buscar si hay una de nivel campaña
+                  const campaignLevelRelation = await CampaignCustomVariable.query()
+                    .where('customVarId', varId)
+                    .where('campaignId', campaign.id)
+                    .whereNull('campaignStageId')
+                    .first()
+                  
+                  if (campaignLevelRelation) {
+                    // Existe una relación de nivel campaña, usar esa
+                    customVariable = (await CustomVariable.find(varId))!
+                    customVariable.name = varName
+                    if (varDescription !== null) {
+                      customVariable.description = varDescription
+                    }
+                    if (varValor !== null) {
+                      customVariable.valor = varValor
+                    }
+                    await customVariable.save()
+                    varsByNameMap.set(varName, campaignLevelRelation)
+                  } else {
+                    // No hay relación de nivel campaña, crear una
+                    customVariable = (await CustomVariable.find(varId))!
+                    customVariable.name = varName
+                    if (varDescription !== null) {
+                      customVariable.description = varDescription
+                    }
+                    if (varValor !== null) {
+                      customVariable.valor = varValor
+                    }
+                    await customVariable.save()
+                    
+                    const newRelation = await CampaignCustomVariable.create({
+                      customVarId: customVariable.id,
+                      campaignId: campaign.id,
+                      campaignStageId: null
+                    })
+                    varsByNameMap.set(varName, newRelation)
+                    currentVarsMap.set(varId, newRelation)
+                  }
+                }
+              } else {
+                // El ID no existe en currentVarsMap, verificar si la variable existe en la BD
+                const existingVar = await CustomVariable.find(varId)
+                
+                if (existingVar) {
+                  // La variable existe pero no está en esta campaña, verificar si hay relación
+                  const relationCheck = await CampaignCustomVariable.query()
+                    .where('customVarId', varId)
+                    .where('campaignId', campaign.id)
+                    .whereNull('campaignStageId')
+                    .first()
+                  
+                  if (relationCheck) {
+                    // Existe la relación, actualizar la variable
+                    customVariable = existingVar
+                    customVariable.name = varName
+                    if (varDescription !== null) {
+                      customVariable.description = varDescription
+                    }
+                    if (varValor !== null) {
+                      customVariable.valor = varValor
+                    }
+                    await customVariable.save()
+                    varsByNameMap.set(varName, relationCheck)
+                    currentVarsMap.set(varId, relationCheck)
+                  } else {
+                    // No existe relación, crear una nueva
+                    customVariable = existingVar
+                    customVariable.name = varName
+                    if (varDescription !== null) {
+                      customVariable.description = varDescription
+                    }
+                    if (varValor !== null) {
+                      customVariable.valor = varValor
+                    }
+                    await customVariable.save()
+                    
+                    const newRelation = await CampaignCustomVariable.create({
+                      customVarId: customVariable.id,
+                      campaignId: campaign.id,
+                      campaignStageId: null
+                    })
+                    varsByNameMap.set(varName, newRelation)
+                    currentVarsMap.set(varId, newRelation)
+                  }
+                } else {
+                  // La variable no existe, buscar por nombre como último recurso
+                  existingRelation = varsByNameMap.get(varName)
+                  
+                  if (existingRelation && existingRelation.campaignStageId === null) {
+                    // Encontramos por nombre, usar esa variable
+                    customVariable = existingRelation.customVariable
+                    
+                    if (varValor !== null) {
+                      customVariable.valor = varValor
+                      await customVariable.save()
+                    }
+                    if (varDescription !== null) {
+                      customVariable.description = varDescription
+                      await customVariable.save()
+                    }
+                  } else {
+                    // No existe, crear nueva variable
+                    customVariable = await CustomVariable.create({
+                      name: varName,
+                      description: varDescription,
+                      valor: varValor
+                    })
+
+                    const newRelation = await CampaignCustomVariable.create({
+                      customVarId: customVariable.id,
+                      campaignId: campaign.id,
+                      campaignStageId: null
+                    })
+                    varsByNameMap.set(varName, newRelation)
+                    currentVarsMap.set(customVariable.id, newRelation)
+                  }
+                }
               }
-            }
+            } else {
+              // No se proporcionó ID o es negativo (variable nueva), buscar por nombre
+              existingRelation = varsByNameMap.get(varName)
 
-            // Buscar si ya existe una relación para esta variable en esta campaña
-            // Priorizar buscar registros de nivel campaña (campaignStageId IS NULL)
-            let existingRelation = await CampaignCustomVariable.query()
-              .where('campaignId', campaign.id)
-              .where('customVarId', customVariable.id)
-              .whereNull('campaignStageId')
-              .first()
+              if (existingRelation && existingRelation.campaignStageId === null) {
+                // Si ya existe una relación en esta campaña, usar esa variable
+                customVariable = existingRelation.customVariable
+                
+                // Actualizar el valor si se proporcionó uno nuevo
+                if (varValor !== null) {
+                  customVariable.valor = varValor
+                  await customVariable.save()
+                }
+                if (varDescription !== null) {
+                  customVariable.description = varDescription
+                  await customVariable.save()
+                }
+                // NO crear una nueva relación, ya existe
+              } else {
+                // Si no existe en esta campaña, crear una nueva variable única para esta campaña
+                customVariable = await CustomVariable.create({
+                  name: varName,
+                  description: varDescription,
+                  valor: varValor
+                })
 
-            // Si no existe de nivel campaña, buscar cualquier registro con este customVarId y campaignId
-            if (!existingRelation) {
-              existingRelation = await CampaignCustomVariable.query()
-                .where('campaignId', campaign.id)
-                .where('customVarId', customVariable.id)
-                .first()
-            }
-
-            if (existingRelation) {
-              // Si es un registro de nivel etapa, crear uno nuevo de nivel campaña
-              // (no modificar el de nivel etapa)
-              if (existingRelation.campaignStageId !== null) {
-                await CampaignCustomVariable.create({
+                const newRelation = await CampaignCustomVariable.create({
                   customVarId: customVariable.id,
                   campaignId: campaign.id,
                   campaignStageId: null
                 })
+                varsByNameMap.set(varName, newRelation)
+                currentVarsMap.set(customVariable.id, newRelation)
               }
-              // Si ya existe de nivel campaña, no necesitamos hacer nada más
-            } else {
-              // Crear nueva relación de nivel campaña
-              await CampaignCustomVariable.create({
-                customVarId: customVariable.id,
-                campaignId: campaign.id,
-                campaignStageId: null
-              })
             }
 
             processedVarIds.add(customVariable.id)
@@ -787,6 +918,8 @@ export default class CampaignsController {
       })
     }
 
+    // IMPORTANTE: Identificar la variable por su ID, no por su nombre
+    // Esto asegura que la actualización se haga sobre la variable correcta
     const customVariable = await CustomVariable.find(params.id)
 
     if (!customVariable) {
@@ -806,19 +939,70 @@ export default class CampaignsController {
     }
 
     try {
-      // Verificar que no exista otra variable con el mismo nombre
-      const existingVar = await CustomVariable.query()
-        .where('name', name.trim())
-        .where('id', '!=', params.id)
-        .first()
+      // Si se proporcionó campaignId, validar y verificar permisos
+      if (campaignId) {
+        const targetCampaignId = typeof campaignId === 'string' ? parseInt(campaignId) : campaignId
+        
+        // Verificar que la campaña existe y pertenece al tenant
+        const campaign = await Campaign.query()
+          .where('id', targetCampaignId)
+          .where('tenantId', tenantUser.tenantId)
+          .first()
 
-      if (existingVar) {
-        return response.status(400).json({
-          success: false,
-          message: 'Ya existe una variable con ese nombre'
-        })
+        if (!campaign) {
+          return response.status(404).json({
+            success: false,
+            message: 'Campaña no encontrada'
+          })
+        }
+
+        // Verificar que la variable pertenece a esta campaña
+        const variableInCampaign = await CampaignCustomVariable.query()
+          .where('customVarId', customVariable.id)
+          .where('campaignId', targetCampaignId)
+          .first()
+
+        if (!variableInCampaign) {
+          return response.status(403).json({
+            success: false,
+            message: 'Esta variable no pertenece a la campaña especificada'
+          })
+        }
+
+        // Verificar que no exista otra variable con el mismo nombre en esta campaña (excluyendo la actual)
+        const existingVarInCampaign = await CampaignCustomVariable.query()
+          .where('campaignId', targetCampaignId)
+          .whereIn('customVarId', (subquery) => {
+            subquery.from('custom_variables')
+              .select('id')
+              .where('name', name.trim())
+              .where('id', '!=', params.id) // Excluir la variable actual
+          })
+          .first()
+        
+        if (existingVarInCampaign) {
+          return response.status(400).json({
+            success: false,
+            message: 'Ya existe una variable con ese nombre en esta campaña'
+          })
+        }
+      } else {
+        // Si no hay campaignId, verificar que no exista otra variable con el mismo nombre en todo el sistema
+        const existingVar = await CustomVariable.query()
+          .where('name', name.trim())
+          .where('id', '!=', params.id) // Excluir la variable actual
+          .first()
+
+        if (existingVar) {
+          return response.status(400).json({
+            success: false,
+            message: 'Ya existe una variable con ese nombre'
+          })
+        }
       }
 
+      // Actualizar directamente la variable existente sin crear nuevas
+      console.log(`[UPDATE VARIABLE] Updating existing variable ID: ${customVariable.id}`)
       customVariable.name = name.trim()
       if (description !== undefined) {
         customVariable.description = description?.trim() || null
@@ -832,37 +1016,7 @@ export default class CampaignsController {
       
       await customVariable.save()
 
-      // Si se proporcionó campaignId, asegurarse de que exista la relación en campaign_custom_variables
-      // (solo la relación, sin guardar valor porque ahora se guarda en custom_variables)
-      if (campaignId) {
-        const campaignIdInt = typeof campaignId === 'string' ? parseInt(campaignId) : campaignId
-
-        // Verificar que la campaña existe y pertenece al tenant
-        const campaign = await Campaign.query()
-          .where('id', campaignIdInt)
-          .where('tenantId', tenantUser.tenantId)
-          .first()
-
-        if (campaign) {
-          // Verificar si existe CUALQUIER relación (nivel campaña o etapa) antes de crear una nueva
-          const existingRelation = await CampaignCustomVariable.query()
-            .where('customVarId', customVariable.id)
-            .where('campaignId', campaignIdInt)
-            .first()
-
-          // Solo crear registro de nivel campaña si no existe NINGUNA relación
-          // Esto evita crear registros duplicados cuando ya existe uno de nivel etapa
-          if (!existingRelation) {
-            await CampaignCustomVariable.create({
-              customVarId: customVariable.id,
-              campaignId: campaignIdInt,
-              campaignStageId: null
-            })
-          }
-        }
-      }
-
-      // Recargar la variable para obtener los datos actualizados después de todas las operaciones
+      // Recargar la variable para obtener los datos actualizados
       await customVariable.refresh()
 
       return response.status(200).json({

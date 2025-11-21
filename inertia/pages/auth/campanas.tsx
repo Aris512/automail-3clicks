@@ -415,72 +415,40 @@ export default function Campanas({ user }: CampanasProps) {
       return
     }
 
-    // Si estamos creando una nueva campaña, solo agregar al formulario sin guardar en el backend
-    if (!editingCampaign) {
-      const newVar = {
-        id: Date.now(), // ID temporal para identificar la variable en el formulario
-        name: trimmed,
-        description: '',
-        valor: newVariableForm.valor.trim() || ''
-      }
-      
-      setAllCustomVariables(prev => [...prev, newVar])
-      setFormData(prev => ({
-        ...prev,
-        customVariables: [...prev.customVariables, newVar]
-      }))
-      
-      showSuccess('Variable agregada', 'La variable se ha agregado al formulario', 3000)
-      setNewVariableForm({ name: '', valor: '' })
-      setShowAddVariableDialog(false)
-      return
+    // IMPORTANTE: Los cambios se guardan solo en el estado local, se aplicarán al presionar "Actualizar Campaña"
+    // Generar un ID temporal negativo para identificar variables nuevas (que no existen en el backend)
+    const newVar = {
+      id: editingCampaign ? -(Date.now()) : Date.now(), // ID temporal negativo para edición, positivo para creación
+      name: trimmed,
+      description: '',
+      valor: newVariableForm.valor.trim() || ''
     }
-
-    // Si estamos editando una campaña, guardar en el backend
-    try {
-      const requestBody: any = {
-        name: trimmed,
-        description: '',
-        campaignId: editingCampaign.id,
-        valor: newVariableForm.valor.trim() || null
-      }
-
-      const response = await fetch('/campaigns/custom-variables', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(),
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody)
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        showSuccess('Variable creada', 'La variable personalizada se ha creado exitosamente', 3000)
-        await loadCampaignCustomVariables(editingCampaign.id)
-        await handleEdit(editingCampaign)
-        setNewVariableForm({ name: '', valor: '' })
-        setShowAddVariableDialog(false)
-      } else {
-        showError('Error al crear', result.message || 'No se pudo crear la variable personalizada')
-      }
-    } catch (error) {
-      console.error('Error al crear variable:', error)
-      showError('Error de conexión', 'No se pudo conectar con el servidor')
-    }
+    
+    setAllCustomVariables(prev => [...prev, newVar])
+    setFormData(prev => ({
+      ...prev,
+      customVariables: [...prev.customVariables, newVar]
+    }))
+    
+    setNewVariableForm({ name: '', valor: '' })
+    setShowAddVariableDialog(false)
   }
 
 
   // Abrir modal de edición de variable
+  // IMPORTANTE: Identificar la variable por su ID, no por su nombre
   const handleOpenEditVariable = (variable: CustomVariable) => {
+    if (!variable.id) {
+      showError('Error', 'La variable no tiene un ID válido')
+      return
+    }
+    
     // Obtener el valor de la variable desde formData.customVariables
+    // Buscar por ID, no por nombre, para asegurar que encontramos la variable correcta
     // Si estamos editando una campaña, el valor viene de campaign_custom_variables
     // Si estamos creando una nueva campaña, el valor viene del formulario
     let valor = ''
-    const campaignVar = formData.customVariables.find(v => v.id === variable.id)
+    const campaignVar = formData.customVariables.find(v => v.id === variable.id) // Buscar por ID
     if (campaignVar) {
       // Asegurar que obtenemos el valor correcto, incluso si es una cadena vacía
       valor = campaignVar.valor !== undefined && campaignVar.valor !== null 
@@ -488,7 +456,9 @@ export default function Campanas({ user }: CampanasProps) {
         : ''
     }
     
-    setEditingVariableId(variable.id!)
+    // Guardar el ID de la variable para usarlo en la actualización
+    // La actualización se hará por ID, no por nombre
+    setEditingVariableId(variable.id)
     setEditingVariableData({
       name: variable.name,
       valor: valor
@@ -497,125 +467,56 @@ export default function Campanas({ user }: CampanasProps) {
   }
 
   // Guardar edición de variable personalizada
-  const handleSaveVariableEdit = async () => {
-    if (!editingVariableId) return
+  // IMPORTANTE: Los cambios se guardan solo en el estado local, se aplicarán al presionar "Actualizar Campaña"
+  const handleSaveVariableEdit = () => {
+    if (!editingVariableId) {
+      showError('Error', 'No se puede editar: la variable no tiene un ID válido')
+      return
+    }
     
     if (!editingVariableData.name.trim()) {
       showError('Campo requerido', 'El nombre de la variable es obligatorio')
       return
     }
 
-    // Si estamos creando una nueva campaña, solo actualizar el formulario
-    if (!editingCampaign) {
-      const updatedVariable = {
-        id: editingVariableId,
-        name: editingVariableData.name.trim(),
-        description: '',
-        valor: editingVariableData.valor.trim() || ''
-      }
-      
-      setAllCustomVariables(prev => 
-        prev.map(v => v.id === editingVariableId ? updatedVariable : v)
+    // Buscar la variable original para mantener la descripción si existe
+    const originalVariable = formData.customVariables.find(v => v.id === editingVariableId)
+    
+    const updatedVariable = {
+      id: editingVariableId,
+      name: editingVariableData.name.trim(),
+      description: originalVariable?.description || '',
+      valor: editingVariableData.valor.trim() || ''
+    }
+    
+    // Actualizar en allCustomVariables
+    setAllCustomVariables(prev => 
+      prev.map(v => v.id === editingVariableId ? updatedVariable : v)
+    )
+    
+    // Actualizar en formData.customVariables
+    setFormData(prev => ({
+      ...prev,
+      customVariables: prev.customVariables.map(v => 
+        v.id === editingVariableId ? updatedVariable : v
       )
-      setFormData(prev => ({
-        ...prev,
-        customVariables: prev.customVariables.map(v => 
-          v.id === editingVariableId ? updatedVariable : v
-        )
-      }))
-      
-      showSuccess('Éxito', 'Se editó correctamente la variable', 3000)
-      setEditingVariableId(null)
-      setEditingVariableData({ name: '', valor: '' })
-      setShowEditVariableDialog(false)
-      return
-    }
-
-    // Si estamos editando una campaña, actualizar en el backend
-    try {
-      const requestBody: any = {
-        name: editingVariableData.name.trim(),
-        campaignId: editingCampaign.id,
-        // Enviar el valor siempre: si está vacío o es undefined, enviar null; si tiene contenido, enviar el string trimmeado
-        valor: editingVariableData.valor && editingVariableData.valor.trim() 
-          ? editingVariableData.valor.trim() 
-          : null
-      }
-
-      const response = await fetch(`/campaigns/custom-variables/${editingVariableId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(),
-        },
-        credentials: 'include',
-        body: JSON.stringify(requestBody)
-      })
-
-      const result = await response.json()
-
-      if (response.ok && result.success) {
-        showSuccess('Éxito', 'Se editó correctamente la variable', 3000)
-        setEditingVariableId(null)
-        setEditingVariableData({ name: '', valor: '' })
-        setShowEditVariableDialog(false)
-        // Recargar las variables de la campaña
-        await loadCampaignCustomVariables(editingCampaign.id)
-        // Recargar el formulario de edición sin mostrar errores si algo falla
-        try {
-          await handleEdit(editingCampaign)
-        } catch (error) {
-          console.error('Error al recargar formulario después de actualizar variable:', error)
-          // No mostrar error al usuario ya que la variable se actualizó correctamente
-        }
-      } else {
-        showError('Error al actualizar', result.message || 'No se pudo actualizar la variable')
-      }
-    } catch (error) {
-      console.error('Error al actualizar variable:', error)
-      showError('Error de conexión', 'No se pudo conectar con el servidor')
-    }
+    }))
+    
+    // Cerrar el diálogo
+    setEditingVariableId(null)
+    setEditingVariableData({ name: '', valor: '' })
+    setShowEditVariableDialog(false)
   }
 
   // Eliminar variable personalizada
-  const handleDeleteVariable = async (variableId: number) => {
-    // Si estamos creando una nueva campaña, solo eliminar del formulario
-    if (!editingCampaign) {
-      setAllCustomVariables(prev => prev.filter(v => v.id !== variableId))
-      setFormData(prev => ({
-        ...prev,
-        customVariables: prev.customVariables.filter(v => v.id !== variableId)
-      }))
-      showSuccess('Variable eliminada', 'La variable se ha eliminado del formulario', 3000)
-      return
-    }
-
-    // Si estamos editando una campaña, eliminar del backend
-    try {
-      const response = await fetch(`/campaigns/custom-variables/${variableId}`, {
-        method: 'DELETE',
-        headers: {
-          'Accept': 'application/json',
-          'X-CSRF-TOKEN': getCsrfToken(),
-        },
-        credentials: 'include'
-      })
-
-      const result = await response.json()
-
-      if (result.success) {
-        showSuccess('Variable eliminada', 'La variable personalizada se ha eliminado correctamente', 3000)
-        // Recargar las variables de la campaña
-        await loadCampaignCustomVariables(editingCampaign.id)
-        await handleEdit(editingCampaign)
-      } else {
-        showError('Error al eliminar', result.message || 'No se pudo eliminar la variable')
-      }
-    } catch (error) {
-      console.error('Error al eliminar variable:', error)
-      showError('Error de conexión', 'No se pudo conectar con el servidor')
-    }
+  // IMPORTANTE: Los cambios se guardan solo en el estado local, se aplicarán al presionar "Actualizar Campaña"
+  const handleDeleteVariable = (variableId: number) => {
+    // Eliminar del estado local (tanto para crear como para editar campaña)
+    setAllCustomVariables(prev => prev.filter(v => v.id !== variableId))
+    setFormData(prev => ({
+      ...prev,
+      customVariables: prev.customVariables.filter(v => v.id !== variableId)
+    }))
   }
 
   // Guardar campaña
@@ -634,6 +535,7 @@ export default function Campanas({ user }: CampanasProps) {
       const method = editingCampaign ? 'PUT' : 'POST'
 
       const customVariablesToSend = formData.customVariables.map(v => ({
+        id: v.id, // Incluir el ID para identificar variables existentes
         name: v.name,
         description: v.description || '',
         valor: v.valor || ''
