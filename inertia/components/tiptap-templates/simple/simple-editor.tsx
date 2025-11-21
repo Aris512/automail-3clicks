@@ -31,7 +31,7 @@ import { Button as UIButton } from "~/components/ui/button"
 import { useToast } from "~/hooks/useToast"
 
 // --- Icons ---
-import { Megaphone, Layers } from "lucide-react"
+import { Megaphone, Layers, Trash2 } from "lucide-react"
 
 // --- Tiptap Node ---
 import { HorizontalRule } from "~/components/tiptap/tiptap-node/horizontal-rule-node/horizontal-rule-node-extension"
@@ -483,6 +483,82 @@ export function SimpleEditor({
     }
   }
 
+  // Eliminar variable personalizada completa
+  const handleDeleteVariable = async (variableId: number) => {
+    if (!campaignId) {
+      showError('Error', 'No hay una campaña asociada')
+      return
+    }
+
+    try {
+      const response = await fetch(`/campaigns/custom-variables/${variableId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable eliminada', 'La variable personalizada se ha eliminado correctamente', 3000)
+        // Notificar al componente padre para que recargue las variables
+        if (onVariableCreated) {
+          onVariableCreated()
+        }
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar la variable')
+      }
+    } catch (error) {
+      console.error('Error al eliminar variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
+  // Eliminar valor_stage de una variable específica
+  const handleDeleteStageValue = async (variableId: number) => {
+    if (!stageId || !campaignId) {
+      showError('Error', 'Faltan datos necesarios para eliminar el valor')
+      return
+    }
+
+    try {
+      // Actualizar la etapa poniendo valor_stage en null (string vacío)
+      const response = await fetch(`/campaign-stages/${stageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          customVariableValues: [{
+            customVarId: variableId,
+            valor: '' // String vacío para eliminar el valor_stage
+          }]
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Valor eliminado', 'El valor de etapa se ha eliminado correctamente', 3000)
+        // Notificar al componente padre para que recargue las variables
+        if (onVariableCreated) {
+          onVariableCreated()
+        }
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar el valor')
+      }
+    } catch (error) {
+      console.error('Error al eliminar valor de etapa:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
   return (
     <div className={`simple-editor-wrapper ${className || ''}`}>
       <EditorContext.Provider value={{ editor }}>
@@ -717,19 +793,23 @@ export function SimpleEditor({
                     ? String(variable.valorStage)
                     : (variable.valor || '')
                   
+                  const tieneValorStage = variable.valorStage !== null && variable.valorStage !== undefined
+                  
                   return (
                     <div
                       key={variable.id}
-                      className="border rounded-md p-3 bg-gray-50 hover:bg-gray-100 cursor-pointer transition-colors"
-                      onClick={() => handleOpenEditStageValue(variable)}
+                      className="border rounded-md p-3 bg-gray-50 hover:bg-gray-100 transition-colors"
                     >
                       <div className="flex items-center justify-between">
-                        <div className="flex-1">
+                        <div 
+                          className="flex-1 cursor-pointer"
+                          onClick={() => handleOpenEditStageValue(variable)}
+                        >
                           <div className="flex items-center gap-2">
                             <span className="text-sm font-semibold">
                               {`{{${variable.name}}}`}
                             </span>
-                            {variable.valorStage !== null && variable.valorStage !== undefined && (
+                            {tieneValorStage && (
                               <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">
                                 Valor de etapa
                               </span>
@@ -746,17 +826,47 @@ export function SimpleEditor({
                             </p>
                           )}
                         </div>
-                        <UIButton
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation()
-                            handleOpenEditStageValue(variable)
-                          }}
-                        >
-                          Editar
-                        </UIButton>
+                        <div className="flex gap-2">
+                          <UIButton
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleOpenEditStageValue(variable)
+                            }}
+                          >
+                            Editar
+                          </UIButton>
+                          {tieneValorStage && stageId && (
+                            <UIButton
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                handleDeleteStageValue(variable.id)
+                              }}
+                              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                              title="Eliminar valor de etapa"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </UIButton>
+                          )}
+                          <UIButton
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteVariable(variable.id)
+                            }}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            title="Eliminar variable"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </UIButton>
+                        </div>
                       </div>
                     </div>
                   )

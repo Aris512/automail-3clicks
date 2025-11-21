@@ -844,15 +844,15 @@ export default class CampaignsController {
           .first()
 
         if (campaign) {
-          // Buscar relación existente de nivel campaña (campaignStageId IS NULL)
-          const existingCampaignRelation = await CampaignCustomVariable.query()
+          // Verificar si existe CUALQUIER relación (nivel campaña o etapa) antes de crear una nueva
+          const existingRelation = await CampaignCustomVariable.query()
             .where('customVarId', customVariable.id)
             .where('campaignId', campaignIdInt)
-            .whereNull('campaignStageId')
             .first()
 
-          // Si no existe la relación, crearla (sin valor, porque el valor está en custom_variables)
-          if (!existingCampaignRelation) {
+          // Solo crear registro de nivel campaña si no existe NINGUNA relación
+          // Esto evita crear registros duplicados cuando ya existe uno de nivel etapa
+          if (!existingRelation) {
             await CampaignCustomVariable.create({
               customVarId: customVariable.id,
               campaignId: campaignIdInt,

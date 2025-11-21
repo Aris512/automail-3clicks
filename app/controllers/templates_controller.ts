@@ -669,7 +669,7 @@ export default class TemplatesController {
         }
       } else {
         // Si no hay registros con campaign_stage_id IS NULL, obtener todas las variables únicas de la campaña
-        // y crear nuevos registros para esta etapa
+        // y crear nuevos registros para esta etapa SOLO si no existe ya un registro de nivel etapa
         const allCampaignVars = await CampaignCustomVariable.query()
           .where('campaignId', stage.campaignId)
           .preload('customVariable')
@@ -689,17 +689,27 @@ export default class TemplatesController {
             .first()
 
           // Si no existe un registro para esta etapa, crear uno nuevo
+          // Pero solo si hay al menos un registro de esta variable (puede ser de nivel etapa o campaña)
           if (!existingStageVar) {
             // Obtener el primer registro de esta variable para copiar sus valores
             const sourceVar = allCampaignVars.find(cv => cv.customVarId === customVarId)
             if (sourceVar) {
-              await CampaignCustomVariable.create({
-                customVarId: customVarId,
-                campaignId: stage.campaignId,
-                campaignStageId: stage.id,
-                valorStage: sourceVar.valorStage
-              })
-              console.log(`✅ [UPDATE TEMPLATE] Creado nuevo registro para variable ${sourceVar.customVariable.name} en etapa ${stage.id}`)
+              // Verificar nuevamente antes de crear para evitar condiciones de carrera
+              const doubleCheck = await CampaignCustomVariable.query()
+                .where('customVarId', customVarId)
+                .where('campaignId', stage.campaignId)
+                .where('campaignStageId', stage.id)
+                .first()
+              
+              if (!doubleCheck) {
+                await CampaignCustomVariable.create({
+                  customVarId: customVarId,
+                  campaignId: stage.campaignId,
+                  campaignStageId: stage.id,
+                  valorStage: sourceVar.valorStage
+                })
+                console.log(`✅ [UPDATE TEMPLATE] Creado nuevo registro para variable ${sourceVar.customVariable.name} en etapa ${stage.id}`)
+              }
             }
           }
         }

@@ -6,7 +6,7 @@ import { Button } from '~/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '~/components/ui/card'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
-import { Plus, FileText, Edit, Trash2, Eye, X, Link2, Unlink, Filter, Search, RefreshCw } from 'lucide-react'
+import { Plus, FileText, Edit, Trash2, Eye, X, Link2, Unlink, Filter, Search, RefreshCw, Layers } from 'lucide-react'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import { AlertDialog } from '~/components/ui/alert-dialog'
@@ -881,6 +881,68 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     showSuccess('Valor actualizado', 'El valor se guardará cuando guardes la etapa', 2000)
   }
 
+  // Eliminar valor_stage de una variable específica
+  const handleDeleteStageValue = async (variableId: number) => {
+    if (!editingStageId || !stageFormData.campaignId) {
+      showError('Error', 'Faltan datos necesarios para eliminar el valor')
+      return
+    }
+
+    try {
+      // Actualizar la etapa poniendo valor_stage en null (string vacío)
+      const response = await fetch(`/campaign-stages/${editingStageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          customVariableValues: [{
+            customVarId: variableId,
+            valor: '' // String vacío para eliminar el valor_stage
+          }]
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Valor eliminado', 'El valor de etapa se ha eliminado correctamente', 3000)
+        // Recargar variables de la etapa para actualizar la vista
+        if (editingStageId) {
+          try {
+            const response = await fetch(`/campaign-stages/${editingStageId}`, {
+              method: 'GET',
+              headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': getCsrfToken(),
+              },
+              credentials: 'include'
+            })
+            const result = await response.json()
+            if (result.success && result.data?.customVariablesWithValues) {
+              setStageVariables(result.data.customVariablesWithValues)
+              // Limpiar el valor del formulario si estaba en customVariableValues
+              setStageFormData(prev => ({
+                ...prev,
+                customVariableValues: prev.customVariableValues.filter(v => v.customVarId !== variableId)
+              }))
+            }
+          } catch (error) {
+            console.error('Error al recargar variables de la etapa:', error)
+          }
+        }
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar el valor')
+      }
+    } catch (error) {
+      console.error('Error al eliminar valor de etapa:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
   // Guardar edición de variable personalizada
   const handleSaveVariableEdit = async () => {
     if (!editingVariableId || !stageFormData.campaignId) {
@@ -1022,6 +1084,89 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       await loadVariablesFromStage(currentStageId)
     } else if (currentCampaignId) {
       await loadVariablesFromCampaign(currentCampaignId)
+    }
+  }
+
+  // Función helper para obtener las etapas que usan una plantilla
+  const getStagesUsingTemplate = (templateId: number) => {
+    return stages.filter(stage => 
+      stage.templates?.some(t => t.id === templateId)
+    )
+  }
+
+  // Eliminar variable personalizada desde el modal de plantilla
+  const handleDeleteVariableFromTemplate = async (variableId: number) => {
+    if (!currentCampaignId) {
+      showError('Error', 'No hay una campaña asociada')
+      return
+    }
+
+    try {
+      const response = await fetch(`/campaigns/custom-variables/${variableId}`, {
+        method: 'DELETE',
+        headers: {
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include'
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Variable eliminada', 'La variable personalizada se ha eliminado correctamente', 3000)
+        // Recargar variables
+        if (currentStageId) {
+          await loadVariablesFromStage(currentStageId)
+        } else if (currentCampaignId) {
+          await loadVariablesFromCampaign(currentCampaignId)
+        }
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar la variable')
+      }
+    } catch (error) {
+      console.error('Error al eliminar variable:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
+    }
+  }
+
+  // Eliminar valor_stage desde el modal de plantilla
+  const handleDeleteStageValueFromTemplate = async (variableId: number) => {
+    if (!currentStageId || !currentCampaignId) {
+      showError('Error', 'Faltan datos necesarios para eliminar el valor')
+      return
+    }
+
+    try {
+      // Actualizar la etapa poniendo valor_stage en null (string vacío)
+      const response = await fetch(`/campaign-stages/${currentStageId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'X-CSRF-TOKEN': getCsrfToken(),
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          customVariableValues: [{
+            customVarId: variableId,
+            valor: '' // String vacío para eliminar el valor_stage
+          }]
+        })
+      })
+
+      const result = await response.json()
+
+      if (result.success) {
+        showSuccess('Valor eliminado', 'El valor de etapa se ha eliminado correctamente', 3000)
+        // Recargar variables
+        await loadVariablesFromStage(currentStageId)
+      } else {
+        showError('Error al eliminar', result.message || 'No se pudo eliminar el valor')
+      }
+    } catch (error) {
+      console.error('Error al eliminar valor de etapa:', error)
+      showError('Error de conexión', 'No se pudo conectar con el servidor')
     }
   }
 
@@ -1334,11 +1479,19 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                     </CardHeader>
                     <CardContent>
                       <p className="text-sm text-gray-600">{template.subject}</p>
-                      <span className={`text-xs px-2 py-1 rounded mt-2 inline-block ${
-                        template.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
-                        {template.active ? 'Activa' : 'Inactiva'}
-                      </span>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <span className={`text-xs px-2 py-1 rounded inline-block ${
+                          template.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                        }`}>
+                          {template.active ? 'Activa' : 'Inactiva'}
+                        </span>
+                        {getStagesUsingTemplate(template.id).length > 0 && (
+                          <span className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 inline-flex items-center gap-1">
+                            <Layers className="h-3 w-3" />
+                            Usada en {getStagesUsingTemplate(template.id).length} etapa{getStagesUsingTemplate(template.id).length !== 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
                     </CardContent>
                   </Card>
                 ))}
@@ -1513,6 +1666,18 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                   >
                                     <Edit className="h-4 w-4" />
                                   </Button>
+                                  {tieneValorStage && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDeleteStageValue(variable.id)}
+                                      className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                      title="Eliminar valor de etapa"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
                                   <Button
                                     type="button"
                                     variant="outline"
@@ -1606,6 +1771,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                         {availableCustomVariables.map((variable) => {
                           // Priorizar valor_stage sobre valor (usar valorFinal si está disponible, si no calcular)
                           const valorFinal = variable.valorFinal || (variable.valorStage || variable.valor || '')
+                          const tieneValorStage = variable.valorStage !== null && variable.valorStage !== undefined
 
                           return (
                             <div key={variable.id} className="border rounded-md p-3 bg-gray-50">
@@ -1615,7 +1781,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                     <span className="text-sm font-semibold">
                                       {`{{${variable.name}}}`}
                                     </span>
-                                    {variable.valorStage && (
+                                    {tieneValorStage && (
                                       <span className="text-xs px-2 py-0.5 rounded bg-green-100 text-green-700">
                                         Valor de etapa
                                       </span>
@@ -1631,6 +1797,30 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                       {variable.description}
                                     </p>
                                   )}
+                                </div>
+                                <div className="flex gap-2">
+                                  {tieneValorStage && currentStageId && (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      size="sm"
+                                      onClick={() => handleDeleteStageValueFromTemplate(variable.id)}
+                                      className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+                                      title="Eliminar valor de etapa"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  )}
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => handleDeleteVariableFromTemplate(variable.id)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                    title="Eliminar variable"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
                                 </div>
                               </div>
                             </div>
