@@ -129,6 +129,8 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   })
   const [editingTemplateId, setEditingTemplateId] = useState<number | null>(null)
   const [availableCustomVariables, setAvailableCustomVariables] = useState<CustomVariable[]>([])
+  const [currentStageId, setCurrentStageId] = useState<number | null>(null)
+  const [currentCampaignId, setCurrentCampaignId] = useState<number | null>(null)
 
   // Función helper para obtener el token CSRF
   const getCsrfToken = () => {
@@ -595,7 +597,12 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
   }
 
   // Editar template
-  const handleEditTemplate = async (template: Template) => {
+  const handleEditTemplate = async (template: Template, stageId?: number) => {
+    // Resetear variables al inicio para evitar mostrar variables de ediciones anteriores
+    setAvailableCustomVariables([])
+    setCurrentStageId(null)
+    setCurrentCampaignId(null)
+    
     setTemplateFormData({
       name: template.name,
       subject: template.subject,
@@ -604,14 +611,28 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     })
     setEditingTemplateId(template.id)
     
-    // Cargar variables disponibles desde la etapa asociada si la plantilla está asociada a una etapa
-    const associatedStage = stages.find(s => s.templates?.some(t => t.id === template.id))
-    if (associatedStage && associatedStage.id) {
-      // Cargar variables desde la etapa para obtener valor_stage
-      await loadVariablesFromStage(associatedStage.id)
-    } else if (associatedStage && associatedStage.campaignId) {
-      // Si no hay etapa pero hay campaña, cargar desde la campaña
-      await loadVariablesFromCampaign(associatedStage.campaignId)
+    // Si se proporciona stageId, usar esa etapa específica para cargar las variables
+    if (stageId) {
+      const stage = stages.find(s => s.id === stageId)
+      if (stage) {
+        setCurrentStageId(stageId)
+        setCurrentCampaignId(stage.campaignId)
+        await loadVariablesFromStage(stageId)
+      }
+    } else {
+      // Si no se proporciona stageId, buscar la primera etapa asociada (comportamiento para compatibilidad)
+      const associatedStage = stages.find(s => s.templates?.some(t => t.id === template.id))
+      if (associatedStage && associatedStage.id) {
+        setCurrentStageId(associatedStage.id)
+        setCurrentCampaignId(associatedStage.campaignId)
+        // Cargar variables desde la etapa para obtener valor_stage
+        await loadVariablesFromStage(associatedStage.id)
+      } else if (associatedStage && associatedStage.campaignId) {
+        setCurrentCampaignId(associatedStage.campaignId)
+        // Si no hay etapa pero hay campaña, cargar desde la campaña
+        await loadVariablesFromCampaign(associatedStage.campaignId)
+      }
+      // Si no hay etapa asociada, availableCustomVariables permanece vacío (ya reseteado arriba)
     }
     
     setShowTemplateForm(true)
@@ -631,10 +652,19 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       const result = await response.json()
       if (result.success && result.data?.customVariablesWithValues) {
         // Las variables ya vienen con valorFinal que prioriza valor_stage sobre valor
-        setAvailableCustomVariables(result.data.customVariablesWithValues)
+        // Asegurar que sea un array válido
+        const variables = Array.isArray(result.data.customVariablesWithValues) 
+          ? result.data.customVariablesWithValues 
+          : []
+        setAvailableCustomVariables(variables)
+      } else {
+        // Si no hay variables o la respuesta no es exitosa, establecer array vacío
+        setAvailableCustomVariables([])
       }
     } catch (error) {
       console.error('Error al cargar variables de la etapa:', error)
+      // En caso de error, asegurar que el array esté vacío
+      setAvailableCustomVariables([])
     }
   }
 
@@ -651,10 +681,19 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
       })
       const result = await response.json()
       if (result.success && result.data?.customVariablesWithValues) {
-        setAvailableCustomVariables(result.data.customVariablesWithValues)
+        // Asegurar que sea un array válido
+        const variables = Array.isArray(result.data.customVariablesWithValues) 
+          ? result.data.customVariablesWithValues 
+          : []
+        setAvailableCustomVariables(variables)
+      } else {
+        // Si no hay variables o la respuesta no es exitosa, establecer array vacío
+        setAvailableCustomVariables([])
       }
     } catch (error) {
       console.error('Error al cargar variables de la campaña:', error)
+      // En caso de error, asegurar que el array esté vacío
+      setAvailableCustomVariables([])
     }
   }
 
@@ -973,6 +1012,17 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
     setEditingTemplateId(null)
     setShowTemplateForm(false)
     setAvailableCustomVariables([])
+    setCurrentStageId(null)
+    setCurrentCampaignId(null)
+  }
+
+  // Recargar variables cuando se crea una nueva desde el editor
+  const handleVariableCreated = async () => {
+    if (currentStageId) {
+      await loadVariablesFromStage(currentStageId)
+    } else if (currentCampaignId) {
+      await loadVariablesFromCampaign(currentCampaignId)
+    }
   }
 
   return (
@@ -1210,7 +1260,7 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                                     <Button
                                       variant="ghost"
                                       size="sm"
-                                      onClick={() => handleEditTemplate(template)}
+                                      onClick={() => handleEditTemplate(template, stage.id)}
                                     >
                                       <Edit className="h-4 w-4" />
                                     </Button>
@@ -1536,6 +1586,9 @@ export default function EtapasPlantillas({ user }: EtapasPlantillasProps) {
                         content={templateFormData.content}
                         onChange={(content: string) => setTemplateFormData({ ...templateFormData, content })}
                         customVariables={availableCustomVariables}
+                        campaignId={currentCampaignId}
+                        stageId={currentStageId}
+                        onVariableCreated={handleVariableCreated}
                       />
                     </div>
                   </div>

@@ -833,26 +833,9 @@ export default class CampaignStagesController {
         })
       }
 
-      // Verificar si la etapa aún tiene otros templates asociados
-      const remainingTemplates = await CampaignStageTemplate.query()
-        .where('campaignStageId', stage.id)
-        .first()
-
-      // Si la etapa ya no tiene más templates asociados, actualizar registros eliminando campaign_stage_id
-      // y valor_stage (poniéndolos en null) en lugar de eliminar los registros
-      if (!remainingTemplates) {
-        // Obtener todos los registros de variables con campaign_stage_id = stage.id
-        const stageVars = await CampaignCustomVariable.query()
-          .where('campaignId', stage.campaignId)
-          .where('campaignStageId', stage.id)
-
-        // Actualizar cada registro poniendo campaign_stage_id = null y valor_stage = null
-        for (const stageVar of stageVars) {
-          stageVar.campaignStageId = null
-          stageVar.valorStage = null
-          await stageVar.save()
-        }
-      }
+      // No modificar los valores de las variables personalizadas (valor_stage) al desasociar una plantilla
+      // La desasociación solo elimina la relación en campaign_stage_templates
+      // Los valores de las variables (valor_stage) deben permanecer intactos
 
       return response.json({
         success: true,

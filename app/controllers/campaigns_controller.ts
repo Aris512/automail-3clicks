@@ -1,6 +1,7 @@
 import type { HttpContext } from '@adonisjs/core/http'
 import Campaign from '#models/campaign'
 import CampaignList from '#models/campaign_list'
+import CampaignStage from '#models/campaign_stage'
 import TenantUser from '#models/tenant_user'
 import CustomVariable from '#models/custom_variable'
 import CampaignCustomVariable from '#models/campaign_custom_variable'
@@ -662,7 +663,7 @@ export default class CampaignsController {
       })
     }
 
-    const data = request.only(['name', 'description', 'campaignId', 'valor'])
+    const data = request.only(['name', 'description', 'campaignId', 'stageId', 'valor'])
 
     // Validar que el nombre esté presente
     if (!data.name || !data.name.trim()) {
@@ -684,19 +685,8 @@ export default class CampaignsController {
     }
 
     try {
-      // Verificar si la variable ya existe
-      const existingVariable = await CustomVariable.query()
-        .where('name', varName)
-        .first()
-
-      if (existingVariable) {
-        return response.status(400).json({
-          success: false,
-          message: 'Ya existe una variable personalizada con este nombre'
-        })
-      }
-
       // Crear la variable personalizada con el valor si se proporcionó
+      // Permitir crear variables con el mismo nombre
       const valor = data.valor?.trim() || null
       const customVariable = await CustomVariable.create({
         name: varName,
@@ -715,11 +705,52 @@ export default class CampaignsController {
           .first()
 
         if (campaign) {
-          await CampaignCustomVariable.create({
-            customVarId: customVariable.id,
-            campaignId: campaignId,
-            campaignStageId: null // null para valores a nivel de campaña
-          })
+          // Si se proporcionó stageId, crear solo registro de nivel etapa
+          if (data.stageId) {
+            const stageId = parseInt(data.stageId)
+            
+            // Verificar que la etapa existe y pertenece a la campaña
+            const stage = await CampaignStage.query()
+              .where('id', stageId)
+              .where('campaignId', campaignId)
+              .where('tenantId', tenantUser.tenantId)
+              .first()
+
+            if (stage) {
+              // Verificar si ya existe un registro de nivel etapa antes de crear uno nuevo
+              const existingStageRelation = await CampaignCustomVariable.query()
+                .where('customVarId', customVariable.id)
+                .where('campaignId', campaignId)
+                .where('campaignStageId', stageId)
+                .first()
+
+              // Solo crear si no existe
+              if (!existingStageRelation) {
+                await CampaignCustomVariable.create({
+                  customVarId: customVariable.id,
+                  campaignId: campaignId,
+                  campaignStageId: stageId
+                })
+              }
+            }
+          } else {
+            // Si no hay stageId, crear solo registro de nivel campaña
+            // Verificar si ya existe un registro antes de crear uno nuevo
+            const existingCampaignRelation = await CampaignCustomVariable.query()
+              .where('customVarId', customVariable.id)
+              .where('campaignId', campaignId)
+              .whereNull('campaignStageId')
+              .first()
+
+            // Solo crear si no existe
+            if (!existingCampaignRelation) {
+              await CampaignCustomVariable.create({
+                customVarId: customVariable.id,
+                campaignId: campaignId,
+                campaignStageId: null // null para valores a nivel de campaña
+              })
+            }
+          }
         }
       }
 
