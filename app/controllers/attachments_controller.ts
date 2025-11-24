@@ -11,8 +11,6 @@ export default class AttachmentsController {
    * Usado durante la edición de plantillas
    */
   async storeTemp({ request, response, auth }: HttpContext) {
-    console.log('🚀 [ATTACHMENT STORE TEMP] Iniciando subida temporal de archivo')
-    
     let file: any = null
     
     try {
@@ -38,7 +36,6 @@ export default class AttachmentsController {
       
       // ⚠️ CRÍTICO: Verificar que el archivo existe
       if (!file) {
-        console.error('❌ [ATTACHMENT STORE TEMP] No se proporcionó ningún archivo')
         return response.status(400).json({
           success: false,
           message: 'No se proporcionó ningún archivo'
@@ -47,7 +44,6 @@ export default class AttachmentsController {
       
       // ⚠️ CRÍTICO: Validar ANTES de procesar
       if (!file.isValid) {
-        console.error('❌ [ATTACHMENT STORE TEMP] Archivo inválido:', file.errors)
         return response.status(422).json({
           success: false,
           message: 'Archivo inválido',
@@ -60,8 +56,6 @@ export default class AttachmentsController {
       const fileExtension = path.extname(originalName) || file.extname || ''
       const randomName = crypto.randomBytes(16).toString('hex')
       const fileName = `${randomName}${fileExtension}`
-      
-      console.log(`📦 [ATTACHMENT STORE TEMP] Procesando archivo: ${originalName} (${file.size} bytes)`)
       
       // Crear directorio temporal si no existe
       const tempUploadDir = path.join(
@@ -94,24 +88,18 @@ export default class AttachmentsController {
         throw new Error('No se encontró ruta temporal del archivo')
       }
       
-      console.log(`📂 [ATTACHMENT STORE TEMP] Leyendo archivo temporal: ${tempFilePath}`)
-      
       // Leer el contenido del archivo temporal
       let fileContent: Buffer
       try {
         fileContent = await fs.readFile(tempFilePath)
-        console.log(`✅ [ATTACHMENT STORE TEMP] Archivo leído: ${fileContent.length} bytes`)
       } catch (readError: any) {
-        console.error('❌ [ATTACHMENT STORE TEMP] Error al leer archivo:', readError)
         throw new Error(`No se pudo leer el archivo temporal: ${readError.message}`)
       }
       
       // Escribir el archivo en el destino final
       try {
         await fs.writeFile(filePath, fileContent)
-        console.log(`✅ [ATTACHMENT STORE TEMP] Archivo escrito en: ${filePath}`)
       } catch (writeError: any) {
-        console.error('❌ [ATTACHMENT STORE TEMP] Error al escribir archivo:', writeError)
         throw new Error(`No se pudo escribir el archivo: ${writeError.message}`)
       }
       
@@ -122,14 +110,11 @@ export default class AttachmentsController {
         if (!finalStats.isFile()) {
           throw new Error('El archivo no se guardó correctamente: el path no es un archivo válido')
         }
-        console.log(`✅ [ATTACHMENT STORE TEMP] Archivo verificado: ${finalStats.size} bytes`)
       } catch (statError: any) {
-        console.error('❌ [ATTACHMENT STORE TEMP] Error al verificar archivo:', statError)
         throw new Error(`No se pudo verificar el archivo guardado: ${statError.message}`)
       }
       
       const tempPath = `/uploads/temp/${tenantUser.tenantId}/${fileName}`
-      console.log('✅ [ATTACHMENT STORE TEMP] Archivo temporal guardado exitosamente:', tempPath)
       
       return response.json({
         success: true,
@@ -143,9 +128,6 @@ export default class AttachmentsController {
       })
       
     } catch (error: any) {
-      console.error('❌ [ATTACHMENT STORE TEMP] Error uploading temp file:', error)
-      console.error('❌ [ATTACHMENT STORE TEMP] Error stack:', error.stack)
-      
       return response.status(500).json({
         success: false,
         message: 'Error al subir el archivo temporal',
@@ -163,8 +145,6 @@ export default class AttachmentsController {
    * Subir un archivo (imagen)
    */
   async store({ request, response, auth }: HttpContext) {
-    console.log('🚀 [ATTACHMENT STORE] Iniciando subida de archivo')
-    
     let file: any = null
     
     try {
@@ -190,7 +170,6 @@ export default class AttachmentsController {
       
       // ⚠️ CRÍTICO: Verificar que el archivo existe
       if (!file) {
-        console.error('❌ [ATTACHMENT STORE] No se proporcionó ningún archivo')
         return response.status(400).json({
           success: false,
           message: 'No se proporcionó ningún archivo'
@@ -199,7 +178,6 @@ export default class AttachmentsController {
       
       // ⚠️ CRÍTICO: Validar ANTES de procesar
       if (!file.isValid) {
-        console.error('❌ [ATTACHMENT STORE] Archivo inválido:', file.errors)
         return response.status(422).json({
           success: false,
           message: 'Archivo inválido',
@@ -212,8 +190,6 @@ export default class AttachmentsController {
       const fileExtension = path.extname(originalName) || file.extname || ''
       const randomName = crypto.randomBytes(16).toString('hex')
       const fileName = `${randomName}${fileExtension}`
-      
-      console.log(`📸 [ATTACHMENT STORE] Procesando imagen: ${originalName}`)
       
       // Crear directorio si no existe
       const uploadDir = path.join(
@@ -238,7 +214,6 @@ export default class AttachmentsController {
       try {
         const fileContent = await fs.readFile(tempFilePath)
         await fs.writeFile(filePath, fileContent)
-        console.log(`✅ [ATTACHMENT STORE] Imagen guardada: ${filePath}`)
       } catch (ioError: any) {
         throw new Error(`Error al guardar la imagen: ${ioError.message}`)
       }
@@ -262,9 +237,6 @@ export default class AttachmentsController {
         size: file.size!
       })
       
-      console.log('✅ [ATTACHMENT STORE] Attachment creado:', attachment.id)
-      console.log('📁 [ATTACHMENT STORE] Path:', attachment.path)
-      
       return response.json({
         success: true,
         data: {
@@ -277,9 +249,6 @@ export default class AttachmentsController {
       })
       
     } catch (error: any) {
-      console.error('❌ [ATTACHMENT STORE] Error uploading file:', error)
-      console.error('❌ [ATTACHMENT STORE] Error stack:', error.stack)
-      
       return response.status(500).json({
         success: false,
         message: 'Error al subir el archivo',
