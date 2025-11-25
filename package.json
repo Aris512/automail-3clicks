@@ -31,7 +31,8 @@
     "#tests/*": "./tests/*.js",
     "#start/*": "./start/*.js",
     "#config/*": "./config/*.js",
-    "#commands/*": "./commands/*.js"
+    "#commands/*": "./commands/*.js",
+    "#jobs/*": "./app/jobs/*.js"
   },
   "devDependencies": {
     "@adonisjs/assembler": "^7.8.2",
@@ -104,6 +105,7 @@
     "@tiptap/starter-kit": "^3.10.0",
     "@types/node-cron": "^3.0.11",
     "@vinejs/vine": "^3.0.1",
+    "adonisjs-jobs": "^0.1.1",
     "autoprefixer": "^10.4.21",
     "class-variance-authority": "^0.7.1",
     "cloudinary": "^2.8.0",
