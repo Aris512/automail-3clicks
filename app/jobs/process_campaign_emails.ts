@@ -1,6 +1,7 @@
 import { Job } from 'adonisjs-jobs'
 import { DateTime } from 'luxon'
 import Campaign from '#models/campaign'
+
 import CampaignEmailService from '#services/campaignEmailService'
 
 type ProcessCampaignEmailsPayload = {}
