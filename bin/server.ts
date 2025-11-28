@@ -40,9 +40,8 @@ new Ignitor(APP_ROOT, { importer: IMPORTER })
   .httpServer()
   .start()
   .then(async () => {
-    // Iniciar el scheduler después de que el servidor esté listo
-    const { startScheduler } = await import('#start/scheduler')
-    await startScheduler()
+    // El scheduler se carga automáticamente a través de los preloads en adonisrc.ts
+    // No es necesario importarlo manualmente aquí
   })
   .catch((error) => {
     process.exitCode = 1
