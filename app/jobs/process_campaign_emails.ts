@@ -9,7 +9,7 @@ type ProcessCampaignEmailsPayload = {}
 export default class ProcessCampaignEmails extends Job {
   async handle(_payload: ProcessCampaignEmailsPayload) {
     const executionStart = DateTime.now()
-    this.logger.info('[Job] Iniciando procesamiento de campañas programadas...')
+    this.logger.info('[Job] Iniciando procesamiento de campanas programadas')
 
     try {
       // Buscar campañas activas con emailSetup y smtpConfig pre-cargados
@@ -22,26 +22,26 @@ export default class ProcessCampaignEmails extends Job {
         .preload('campaignStages')
 
       if (activeCampaigns.length === 0) {
-        this.logger.debug('[Job] No se encontraron campañas activas para procesar')
+        this.logger.debug('[Job] No se encontraron campanas activas para procesar')
         return
       }
 
       this.logger.info(
-        `[Job] Se encontraron ${activeCampaigns.length} campaña(s) activa(s) - IDs: ${activeCampaigns.map((c) => c.id).join(', ')}`
+        `[Job] Se encontraron ${activeCampaigns.length} campana(s) activa(s) - IDs: ${activeCampaigns.map((c) => c.id).join(', ')}`
       )
 
       // Filtrar campañas que tienen emailSetup y smtpConfig activo
       const validCampaigns = activeCampaigns.filter((campaign) => {
         if (!campaign.emailSetup) {
           this.logger.warn(
-            `[Job] Campaña ID ${campaign.id} "${campaign.name}": No tiene email setup configurado, omitiendo`
+            `[Job] Campana ID ${campaign.id} "${campaign.name}": No tiene email setup configurado, omitiendo`
           )
           return false
         }
 
         if (!campaign.emailSetup.smtpConfig || !campaign.emailSetup.smtpConfig.isActive) {
           this.logger.warn(
-            `[Job] Campaña ID ${campaign.id} "${campaign.name}": No tiene configuración SMTP activa, omitiendo`
+            `[Job] Campana ID ${campaign.id} "${campaign.name}": No tiene configuración SMTP activa, omitiendo`
           )
           return false
         }
@@ -50,12 +50,12 @@ export default class ProcessCampaignEmails extends Job {
       })
 
       if (validCampaigns.length === 0) {
-        this.logger.warn('[Job] No se encontraron campañas válidas con email setup y SMTP activo')
+        this.logger.warn('[Job] No se encontraron campanas validas con email setup y SMTP activo')
         return
       }
 
       this.logger.info(
-        `[Job] ${validCampaigns.length} de ${activeCampaigns.length} campaña(s) tienen configuración SMTP activa y están listas para procesar`
+        `[Job] ${validCampaigns.length} de ${activeCampaigns.length} campana(s) tienen configuración SMTP activa y están listas para procesar`
       )
 
       const emailService = new CampaignEmailService()
@@ -79,13 +79,13 @@ export default class ProcessCampaignEmails extends Job {
 
         if (readyStages.length === 0) {
           this.logger.debug(
-            `[Job] Campaña ID ${campaign.id} "${campaign.name}": No tiene etapas listas para enviar en este momento`
+            `[Job] Campana ID ${campaign.id} "${campaign.name}": No tiene etapas listas para enviar en este momento`
           )
           continue
         }
 
         this.logger.info(
-          `[Job] Campaña ID ${campaign.id} "${campaign.name}": ${readyStages.length} etapa(s) lista(s) para enviar`
+          `[Job] Campana ID ${campaign.id} "${campaign.name}": ${readyStages.length} etapa(s) lista(s) para enviar`
         )
 
         // Procesar cada etapa lista
@@ -120,7 +120,7 @@ export default class ProcessCampaignEmails extends Job {
             }
           } catch (error: any) {
             this.logger.error(
-              `[Job] Error crítico al procesar etapa ID ${stage.id} de campaña ID ${campaign.id}: ${error.message}`
+              `[Job] Error critico al procesar etapa ID ${stage.id} de campana ID ${campaign.id}: ${error.message}`
             )
             if (error.stack) {
               this.logger.error(`[Job] Stack trace: ${error.stack}`)
@@ -133,17 +133,17 @@ export default class ProcessCampaignEmails extends Job {
       const executionDuration = DateTime.now().diff(executionStart).as('seconds')
       if (totalProcessed > 0) {
         this.logger.info(
-          `[Job] Ejecución completada en ${executionDuration.toFixed(2)}s: ${totalProcessed} etapa(s) procesada(s), ${totalSent} email(s) enviado(s), ${totalFailed} fallido(s)`
+          `[Job] Ejecucion completada en ${executionDuration.toFixed(2)}s: ${totalProcessed} etapa(s) procesada(s), ${totalSent} email(s) enviado(s), ${totalFailed} fallido(s)`
         )
       } else {
         this.logger.debug(
-          `[Job] Ejecución completada en ${executionDuration.toFixed(2)}s: No se procesaron etapas en este ciclo`
+          `[Job] Ejecucion completada en ${executionDuration.toFixed(2)}s: No se procesaron etapas en este ciclo`
         )
       }
     } catch (error: any) {
       const executionDuration = DateTime.now().diff(executionStart).as('seconds')
       this.logger.error(
-        `[Job] Error fatal en el procesamiento después de ${executionDuration.toFixed(2)}s: ${error.message}`
+        `[Job] Error fatal en el procesamiento despues de ${executionDuration.toFixed(2)}s: ${error.message}`
       )
       if (error.stack) {
         this.logger.error(`[Job] Stack trace: ${error.stack}`)

@@ -21,11 +21,20 @@ if (app.getEnvironment() !== 'test') {
       // Importar dinámicamente el job para evitar problemas de carga circular
       const ProcessCampaignEmails = (await import('#jobs/process_campaign_emails')).default
 
-      logger.info('[Scheduler] Despachando job para procesar campañas programadas...')
+      logger.info('[Scheduler] Despachando job para procesar campanas programadas')
 
       // Despachar el job para procesar las campañas
       // El job se ejecutará de manera asíncrona en segundo plano
-      await ProcessCampaignEmails.dispatch({})
+      // Opciones para deshabilitar logs automáticos del job
+      await ProcessCampaignEmails.dispatch({}, {
+        removeOnComplete: 1000,
+        removeOnFail: 1000,
+        attempts: 0,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+      })
 
       logger.debug('[Scheduler] Job despachado correctamente')
     } catch (error: any) {
@@ -36,8 +45,8 @@ if (app.getEnvironment() !== 'test') {
     }
   }).everyMinute()
 
-  logger.info('[Scheduler] Scheduler configurado correctamente: verificando campañas programadas cada minuto')
-  logger.info('[Scheduler] Asegúrate de ejecutar "node ace scheduler:run" para ejecutar el scheduler')
-  logger.info('[Scheduler] Asegúrate de ejecutar "node ace jobs:listen" para procesar los jobs')
+  logger.info('[Scheduler] Scheduler configurado correctamente: verificando campanas programadas cada minuto')
+  logger.info('[Scheduler] Asegurate de ejecutar "node ace scheduler:run" para ejecutar el scheduler')
+  logger.info('[Scheduler] Asegurate de ejecutar "node ace jobs:listen" para procesar los jobs')
 }
 
