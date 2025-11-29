@@ -173,14 +173,36 @@ export default class ProcessCampaignEmails extends Job {
       // Procesar cada campaña válida
       for (const campaign of validCampaigns) {
         // Buscar etapas que ya deben enviarse
+        // Solo incluir etapas que están exactamente en el minuto programado
         const readyStages = campaign.campaignStages.filter((stage) => {
           if (!stage.startsAt) {
             return false
           }
 
           const startTime = stage.startsAt
-          // Verificar que startsAt ya haya pasado
-          return startTime <= now
+          // Comparar solo hasta el minuto (año, mes, día, hora y minuto)
+          // Esto asegura que solo se procese en el minuto exacto programado
+          const startTimeMinute = startTime.startOf('minute')
+          const nowMinute = now.startOf('minute')
+          
+          // Comparar usando timestamps en milisegundos para mayor precisión
+          const startTimeMs = startTimeMinute.toMillis()
+          const nowMs = nowMinute.toMillis()
+          const isMatch = startTimeMs === nowMs
+          
+          // Log de depuración para ver qué se está comparando
+          if (!isMatch) {
+            this.logger.debug(
+              `[Job] Etapa ${stage.id} "${stage.name}": No coincide con minuto actual. Programada: ${startTimeMinute.toISO()} (${startTimeMs}), Actual: ${nowMinute.toISO()} (${nowMs})`
+            )
+          } else {
+            this.logger.info(
+              `[Job] Etapa ${stage.id} "${stage.name}": Coincide con minuto actual. Programada: ${startTimeMinute.toISO()}, Actual: ${nowMinute.toISO()}`
+            )
+          }
+          
+          // Solo incluir si estamos exactamente en el mismo minuto
+          return isMatch
         })
 
         if (readyStages.length === 0) {

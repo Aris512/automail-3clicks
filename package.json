@@ -112,6 +112,7 @@
     "cloudinary": "^2.8.0",
     "clsx": "^2.1.1",
     "csv-parser": "^3.2.0",
+    "deep-email-validator": "^0.1.21",
     "dotenv": "^17.2.3",
     "edge.js": "^6.2.1",
     "lodash.throttle": "^4.1.1",

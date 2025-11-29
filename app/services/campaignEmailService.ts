@@ -10,12 +10,16 @@ import SubscriberList from '#models/subscriber_list'
 import Sending from '#models/sending'
 import TemplateRenderService from './templatesRenderService.js'
 import HtmlEmailProcessor from './htmlEmailProcessor.js'
+import EmailValidationService from './emailValidationService.js'
 
 export default class CampaignEmailService {
   private renderService: TemplateRenderService
+  private emailValidationService: EmailValidationService
 
   constructor() {
     this.renderService = new TemplateRenderService()
+    // Configurar validación con timeout de 5 segundos y validación SMTP habilitada
+    this.emailValidationService = new EmailValidationService(5000, true)
   }
 
   /**
@@ -290,12 +294,35 @@ export default class CampaignEmailService {
         const now = DateTime.now()
         const startTime = stage.startsAt
 
-        if (startTime > now) {
+        // Comparar solo hasta el minuto (año, mes, día, hora y minuto)
+        // Esto asegura que solo se procese en el minuto exacto programado
+        const startTimeMinute = startTime.startOf('minute')
+        const nowMinute = now.startOf('minute')
+
+        // Comparar usando timestamps en milisegundos para mayor precisión
+        const startTimeMs = startTimeMinute.toMillis()
+        const nowMs = nowMinute.toMillis()
+
+        // Verificar si aún no es momento de enviar
+        if (startTimeMs > nowMs) {
           console.log(
-            `La etapa ${stage.id} (${stage.name}) esta programada para ${startTime.toISO()}, aun no es momento de enviar (ahora: ${now.toISO()})`
+            `⏰ [CampaignEmailService] La etapa ${stage.id} (${stage.name}) esta programada para ${startTimeMinute.toISO()}, aun no es momento de enviar (ahora: ${nowMinute.toISO()})`
           )
           continue
         }
+
+        // Verificar si el minuto ya pasó o si no estamos exactamente en el mismo minuto
+        if (startTimeMs < nowMs || startTimeMs !== nowMs) {
+          console.log(
+            `⏰ [CampaignEmailService] La etapa ${stage.id} (${stage.name}) ya pasó su minuto de envío programado. Programada: ${startTimeMinute.toISO()} (${startTimeMs}), Actual: ${nowMinute.toISO()} (${nowMs}), omitiendo.`
+          )
+          continue
+        }
+
+        // Si llegamos aquí, estamos exactamente en el minuto programado
+        console.log(
+          `✅ [CampaignEmailService] La etapa ${stage.id} (${stage.name}) está en su minuto de envío programado (${startTime.toISO()}), procesando...`
+        )
 
         // NUEVA VERIFICACIÓN: Verificar si la etapa ya fue completamente procesada
         // Obtener las plantillas activas de esta etapa
@@ -324,7 +351,7 @@ export default class CampaignEmailService {
           .where('tenantId', campaign.tenantId)
           .where('campaignId', campaignId)
           .where('campaignStageId', stage.id)
-          .where('deliveryStatus', 'sent')
+          .where('deliveryStatus', 'enviado')
           .count('* as total')
           .first()
 
@@ -337,7 +364,7 @@ export default class CampaignEmailService {
             .where('tenantId', campaign.tenantId)
             .where('campaignId', campaignId)
             .where('campaignStageId', stage.id)
-            .where('deliveryStatus', 'sent')
+            .where('deliveryStatus', 'enviado')
             .orderBy('sentAt', 'desc')
             .first()
 
@@ -403,6 +430,41 @@ export default class CampaignEmailService {
                 continue
               }
 
+              // Validar email del suscriptor antes de enviar
+              console.log(`🔍 [CampaignEmailService] Validando email: ${subscriber.email}`)
+              const emailValidation = await this.emailValidationService.validateEmail(subscriber.email)
+              
+              if (!emailValidation.valid) {
+                const errorMessage = `Email inválido: ${subscriber.email} - ${emailValidation.reason || 'Razón desconocida'}`
+                console.warn(`⚠️ [CampaignEmailService] ${errorMessage}`)
+                
+                failedCount++
+                errors.push(errorMessage)
+                
+                // Registrar el envío fallido por email inválido
+                try {
+                  await Sending.create({
+                    tenantId: campaign.tenantId,
+                    contactId: subscriber.id,
+                    templateId: template.id,
+                    campaignId: campaignId,
+                    campaignStageId: stage.id,
+                    sentAt: null,
+                    sentSubject: null,
+                    sentBody: null,
+                    deliveryStatus: 'no enviado',
+                    messageId: null,
+                  })
+                } catch (dbError) {
+                  console.error('Error al registrar envio fallido por email inválido:', dbError)
+                }
+                
+                // Continuar con el siguiente suscriptor sin intentar enviar
+                continue
+              }
+              
+              console.log(`✅ [CampaignEmailService] Email válido: ${subscriber.email}`)
+
               // Verificar si ya se envió este template a este suscriptor en esta etapa específica
               // COMENTADO: Permite múltiples envíos al mismo suscriptor con la misma etapa
               // const existingSending = await Sending.query()
@@ -411,7 +473,7 @@ export default class CampaignEmailService {
               //   .where('templateId', template.id)
               //   .where('campaignId', campaignId)
               //   .where('campaignStageId', stage.id)
-              //   .where('deliveryStatus', 'sent')
+              //   .where('deliveryStatus', 'enviado')
               //   .first()
 
               // if (existingSending) {
@@ -521,7 +583,7 @@ export default class CampaignEmailService {
                 sentAt: DateTime.now(),
                 sentSubject: finalSubject, // Guardar el asunto con el prefijo
                 sentBody: processedHtml,
-                deliveryStatus: 'sent',
+                deliveryStatus: 'enviado',
                 messageId: info.messageId || null,
               })
 
@@ -555,7 +617,7 @@ export default class CampaignEmailService {
                   sentAt: null,
                   sentSubject: null,
                   sentBody: null,
-                  deliveryStatus: 'failed',
+                  deliveryStatus: 'no enviado',
                   messageId: null,
                 })
               } catch (dbError) {
