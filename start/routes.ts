@@ -35,6 +35,64 @@ router.post('/api/public/subscribe', [SubscribersController, 'publicSubscribe'])
 // Ruta pública para obtener lista de subscribers (con middleware de auth opcional)
 router.get('/api/public/subscribers', [SubscribersController, 'publicIndex']).use(middleware.auth())
 
+// API para estadísticas del dashboard
+router.get('/api/dashboard/stats/sendings-over-time', async ({ request, response, auth }: HttpContext) => {
+  const TenantUser = (await import('#models/tenant_user')).default
+  const DashboardStatsService = (await import('#services/dashboardStatsService')).default
+  
+  const user = auth.user!
+  const tenantUser = await TenantUser.query()
+    .where('userId', user.id)
+    .where('active', true)
+    .first()
+
+  if (!tenantUser) {
+    return response.json({
+      success: false,
+      message: 'Usuario no tiene acceso a ningún tenant activo',
+      data: []
+    })
+  }
+
+  const period = (request.qs().period as 'minute' | 'hour' | 'day' | 'week') || 'day'
+  const statsService = new DashboardStatsService()
+  const data = await statsService.getSendingsOverTime(tenantUser.tenantId, period)
+
+  return response.json({
+    success: true,
+    data
+  })
+}).use(middleware.auth())
+
+// API para envíos por campaña por período
+router.get('/api/dashboard/stats/sendings-by-campaign', async ({ request, response, auth }: HttpContext) => {
+  const TenantUser = (await import('#models/tenant_user')).default
+  const DashboardStatsService = (await import('#services/dashboardStatsService')).default
+  
+  const user = auth.user!
+  const tenantUser = await TenantUser.query()
+    .where('userId', user.id)
+    .where('active', true)
+    .first()
+
+  if (!tenantUser) {
+    return response.json({
+      success: false,
+      message: 'Usuario no tiene acceso a ningún tenant activo',
+      data: []
+    })
+  }
+
+  const period = (request.qs().period as 'daily' | 'weekly' | 'monthly') || 'daily'
+  const statsService = new DashboardStatsService()
+  const data = await statsService.getSendingsByCampaignByPeriod(tenantUser.tenantId, period)
+
+  return response.json({
+    success: true,
+    data
+  })
+}).use(middleware.auth())
+
 // Página principal 
 router.get('/', ({ response }: HttpContext) => {
    response.redirect('/login')
@@ -45,7 +103,7 @@ router.get('/login', [AuthController, 'showLogin'])
 router.get('/register', [AuthController, 'showRegister'])
 
 // Dashboard - Página principal después del login (protegida)
-router.get('/dashboard', ({ inertia, response, auth, session }: HttpContext) => {
+router.get('/dashboard', async ({ inertia, response, auth, session }: HttpContext) => {
   // Headers de seguridad para prevenir caché
   response.header('Cache-Control', 'no-cache, no-store, must-revalidate, private')
   response.header('Pragma', 'no-cache')
@@ -60,10 +118,26 @@ router.get('/dashboard', ({ inertia, response, auth, session }: HttpContext) => 
   if (isFirstVisit) {
     session.put('dashboard_visited', true)
   }
+
+  // Obtener el tenant del usuario
+  const TenantUser = (await import('#models/tenant_user')).default
+  const tenantUser = await TenantUser.query()
+    .where('userId', auth.user!.id)
+    .where('active', true)
+    .first()
+
+  // Obtener estadísticas del dashboard
+  let stats = null
+  if (tenantUser) {
+    const DashboardStatsService = (await import('#services/dashboardStatsService')).default
+    const statsService = new DashboardStatsService()
+    stats = await statsService.getDashboardStats(tenantUser.tenantId)
+  }
   
   return inertia.render('auth/dashboard', {
     user: auth.user,
-    isFirstVisit
+    isFirstVisit,
+    stats
   })
 }).use(middleware.auth())
 
