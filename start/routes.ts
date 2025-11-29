@@ -182,11 +182,9 @@ router.post('/send-mail', [MailController, 'send']).use(middleware.auth())
 // Rutas para contactos (subscribers)
 router.get('/subscribers', [SubscribersController, 'index']).use(middleware.auth())
 router.post('/subscribers', [SubscribersController, 'store']).use(middleware.auth())
-router.get('/subscribers/:id', [SubscribersController, 'show']).use(middleware.auth())
 router.put('/subscribers/:id', [SubscribersController, 'update']).use(middleware.auth())
 router.delete('/subscribers/:id', [SubscribersController, 'destroy']).use(middleware.auth())
 router.post('/subscribers/import', [SubscribersController, 'import']).use(middleware.auth())
-router.get('/subscribers/export', [SubscribersController, 'export']).use(middleware.auth())
 
 // Rutas para listas
 router.get('/lists', [ListsController, 'index']).use(middleware.auth())
@@ -194,7 +192,6 @@ router.post('/lists', [ListsController, 'store']).use(middleware.auth())
 router.get('/lists/:id', [ListsController, 'show']).use(middleware.auth())
 router.put('/lists/:id', [ListsController, 'update']).use(middleware.auth())
 router.delete('/lists/:id', [ListsController, 'destroy']).use(middleware.auth())
-router.put('/lists/:id/toggle-activation', [ListsController, 'toggleActivation']).use(middleware.auth())
 router.get('/lists/:id/subscribers', [ListsController, 'subscribers']).use(middleware.auth())
 
 // Rutas para relaciones contacto-lista
