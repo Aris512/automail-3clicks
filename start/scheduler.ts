@@ -1,6 +1,7 @@
 import scheduler from 'adonisjs-scheduler/services/main'
 import app from '@adonisjs/core/services/app'
 import logger from '@adonisjs/core/services/logger'
+import { DateTime } from 'luxon'
 
 /**
  * Define las tareas programadas usando adonisjs-scheduler
@@ -25,8 +26,25 @@ if (app.getEnvironment() !== 'test') {
 
       // Despachar el job para procesar las campañas
       // El job se ejecutará de manera asíncrona en segundo plano
-      // Opciones para deshabilitar logs automáticos del job
-      await ProcessCampaignEmails.dispatch({}, {
+      // Incluir información contextual en el payload para que aparezca en QueueDash
+      // IMPORTANTE: Pasar solo valores primitivos únicos (strings, numbers) en un objeto plano
+      // para evitar que devalue.stringify() use referencias al serializar
+      // devalue crea referencias cuando detecta valores duplicados, así que cada valor debe ser único
+      const now = DateTime.now()
+      const scheduledAtISO = now.toISO() || new Date().toISOString()
+      
+      // Crear mensaje formateado como log con pipes para mostrar en QueueDash DATA
+      const logMessage = `[${scheduledAtISO}] Job: ProcessCampaignEmails | Propósito: Verificar y procesar campañas de email marketing programadas | Programado por: scheduler | Frecuencia: everyMinute | Ambiente: ${app.getEnvironment()}`
+      
+      // Crear payload con el mensaje formateado como log
+      // Usar solo un campo string para evitar problemas de serialización con devalue
+      const jobPayload = {
+        log: logMessage,
+      }
+
+      logger.debug(`[Scheduler] Despachando job con payload: ${JSON.stringify(jobPayload)}`)
+
+      await ProcessCampaignEmails.dispatch(jobPayload, {
         removeOnComplete: 1000,
         removeOnFail: 1000,
         attempts: 0,

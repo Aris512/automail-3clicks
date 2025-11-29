@@ -260,7 +260,11 @@ const AttachmentsController = () => import('#controllers/attachments_controller'
 router.post('/attachments', [AttachmentsController, 'store']).use(middleware.auth())
 router.post('/attachments/temp', [AttachmentsController, 'storeTemp']).use(middleware.auth())
 
-// Ruta para servir archivos temporales (debe ir después de otras rutas pero antes de rutas catch-all)
+// Rutas del dashboard de QueueDash para monitorear colas de trabajos
+// IMPORTANTE: Debe ir ANTES de otras rutas para que las rutas tRPC funcionen
+router.jobs('/admin/queue').use(middleware.auth())
+
+// Ruta para servir archivos temporales
 router.get('/uploads/temp/:tenantId/:fileName', async ({ params, response }: HttpContext) => {
   const fs = await import('fs/promises')
   const path = await import('path')
