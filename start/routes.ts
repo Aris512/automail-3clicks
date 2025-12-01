@@ -25,12 +25,19 @@ const SubscribersListsController = () => import('#controllers/subscribers_lists_
 // Importar controlador de plantillas
 const TemplatesController = () => import('#controllers/templates_controller')
 
+// Importar controlador de formularios de contacto
+const ContactFormsController = () => import('#controllers/contact_forms_controller')
+
 // Rutas de API (sin Inertia) - Deben ir ANTES de las rutas de Inertia
 const EmailsController = () => import('#controllers/emails_controller')
 router.post('/test-email', [EmailsController, 'sendEmail'])
 
 // Ruta pública para suscripción desde formularios externos (sin middleware de autenticación)
 router.post('/api/public/subscribe', [SubscribersController, 'publicSubscribe'])
+
+// Rutas públicas para formularios de contacto (sin autenticación)
+router.get('/form/:uniqueId', [ContactFormsController, 'showPublicForm'])
+router.post('/api/form/:uniqueId/submit', [ContactFormsController, 'submitPublicForm'])
 
 // Ruta pública para obtener lista de subscribers (con middleware de auth opcional)
 router.get('/api/public/subscribers', [SubscribersController, 'publicIndex']).use(middleware.auth())
@@ -333,6 +340,13 @@ router.delete('/campaign-stages/:id/templates', [CampaignStagesController, 'diss
 const AttachmentsController = () => import('#controllers/attachments_controller')
 router.post('/attachments', [AttachmentsController, 'store']).use(middleware.auth())
 router.post('/attachments/temp', [AttachmentsController, 'storeTemp']).use(middleware.auth())
+
+// Rutas para formularios de contacto (protegidas)
+router.get('/formularios', [ContactFormsController, 'index']).use(middleware.auth())
+router.post('/api/formularios/crear', [ContactFormsController, 'store']).use(middleware.auth())
+router.get('/formularios/:id', [ContactFormsController, 'show']).use(middleware.auth())
+router.put('/formularios/:id', [ContactFormsController, 'update']).use(middleware.auth())
+router.delete('/formularios/:id', [ContactFormsController, 'destroy']).use(middleware.auth())
 
 // Rutas del dashboard de QueueDash para monitorear colas de trabajos
 // IMPORTANTE: Debe ir ANTES de otras rutas para que las rutas tRPC funcionen

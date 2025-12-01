@@ -22,6 +22,7 @@ const shieldConfig = defineConfig({
       '/admin/queue',
       '/admin/queue/trpc',
       '/admin/queue/trpc/*',
+      '/api/form/:uniqueId/submit',
     ],
     enableXsrfCookie: true,
     methods: ['POST', 'PUT', 'PATCH', 'DELETE'],

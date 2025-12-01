@@ -3,7 +3,7 @@ import { validateEmail } from '../../lib/validations'
 import { useToast } from '~/hooks/useToast'
 import ToastContainer from '~/components/ui/toast-container'
 import AppSidebar from '~/components/AppSidebar'
-import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, Eye } from 'lucide-react'
+import { Users, Plus, Upload, Search, Edit, Trash2, Mail, Calendar, RefreshCw, FileText, AlertCircle, List, Folder, Eye, Link2, Copy, ExternalLink, Clock } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 
 interface User {
@@ -31,6 +31,24 @@ interface ListItem {
   createdAt: string
 }
 
+interface ContactForm {
+  id: number
+  name: string
+  uniqueId: string
+  fields: {
+    nombre?: boolean
+    email: boolean
+    telefono?: boolean
+    descripcion?: boolean
+  }
+  listId: number | null
+  list?: ListItem | null
+  expiresAt: string
+  active: boolean
+  createdAt: string
+  updatedAt: string
+}
+
 interface ContactosProps {
   user: User
   subscribers?: Subscriber[]
@@ -43,7 +61,7 @@ interface ContactosProps {
 
 export default function Contactos({ user, subscribers = [], lists = [], flash }: ContactosProps) {
   const { toasts, showError, removeToast } = useToast()
-  const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'lists'>('manual')
+  const [activeTab, setActiveTab] = useState<'manual' | 'import' | 'lists' | 'forms'>('manual')
   const [searchTerm, setSearchTerm] = useState('')
   const [listSearchTerm, setListSearchTerm] = useState('')
   const [notification, setNotification] = useState<{type: 'success' | 'error', message: string} | null>(null)
@@ -89,6 +107,25 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
   const [showDeleteListConfirm, setShowDeleteListConfirm] = useState<{show: boolean, list: ListItem | null}>({show: false, list: null})
   const [isSavingList, setIsSavingList] = useState(false)
   const [showCreateListForm, setShowCreateListForm] = useState(false)
+
+  // Estados para formularios públicos
+  const [forms, setForms] = useState<ContactForm[]>([])
+  const [isLoadingForms, setIsLoadingForms] = useState(false)
+  const [showCreateFormModal, setShowCreateFormModal] = useState(false)
+  const [editingForm, setEditingForm] = useState<ContactForm | null>(null)
+  const [showDeleteFormConfirm, setShowDeleteFormConfirm] = useState<{show: boolean, form: ContactForm | null}>({show: false, form: null})
+  const [isSavingForm, setIsSavingForm] = useState(false)
+  const { data: formData, setData: setFormData, errors: formErrors, reset: resetForm } = useForm({
+    name: '',
+    fields: {
+      nombre: true,
+      email: true,
+      telefono: false,
+      descripcion: false
+    },
+    listId: null as number | null,
+    durationDays: 7
+  })
 
   // Mostrar notificación si hay mensaje flash
   useEffect(() => {
@@ -778,6 +815,182 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
     setShowDeleteListConfirm({show: false, list: null})
   }
 
+  // Funciones para formularios públicos
+  const loadForms = async () => {
+    setIsLoadingForms(true)
+    try {
+      const response = await fetch('/formularios')
+      const result = await response.json()
+      if (result.success) {
+        setForms(result.data)
+      } else {
+        setNotification({ type: 'error', message: 'Error al cargar formularios' })
+        setTimeout(() => setNotification(null), 5000)
+      }
+    } catch (error) {
+      console.error('Error al cargar formularios:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al cargar formularios' })
+      setTimeout(() => setNotification(null), 5000)
+    } finally {
+      setIsLoadingForms(false)
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'forms') {
+      loadForms()
+    }
+  }, [activeTab])
+
+  const handleCreateForm = () => {
+    setEditingForm(null)
+    resetForm()
+    setFormData({
+      name: '',
+      fields: {
+        nombre: true,
+        email: true,
+        telefono: false,
+        descripcion: false
+      },
+      listId: null,
+      durationDays: 7
+    })
+    setShowCreateFormModal(true)
+  }
+
+  const handleEditForm = (form: ContactForm) => {
+    setEditingForm(form)
+    setFormData({
+      name: form.name,
+      fields: {
+        nombre: form.fields.nombre ?? false,
+        email: form.fields.email ?? true,
+        telefono: form.fields.telefono ?? false,
+        descripcion: form.fields.descripcion ?? false
+      },
+      listId: form.listId,
+      durationDays: 7 // No se puede cambiar la duración de un formulario existente
+    })
+    setShowCreateFormModal(true)
+  }
+
+  const handleCloseFormModal = () => {
+    setShowCreateFormModal(false)
+    setEditingForm(null)
+    resetForm()
+  }
+
+  const handleFormSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setIsSavingForm(true)
+    try {
+      const url = editingForm ? `/formularios/${editingForm.id}` : '/api/formularios/crear'
+      const method = editingForm ? 'PUT' : 'POST'
+      
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify(formData)
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setNotification({ 
+          type: 'success', 
+          message: editingForm ? 'Formulario actualizado correctamente' : 'Formulario creado correctamente'
+        })
+        setTimeout(() => setNotification(null), 3000)
+        handleCloseFormModal()
+        await loadForms()
+      } else {
+        setNotification({ type: 'error', message: result.message || 'Error al guardar el formulario' })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    } catch (error) {
+      console.error('Error al guardar formulario:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al guardar el formulario' })
+      setTimeout(() => setNotification(null), 10000)
+    } finally {
+      setIsSavingForm(false)
+    }
+  }
+
+  const handleDeleteForm = async () => {
+    if (!showDeleteFormConfirm.form) return
+    
+    try {
+      const response = await fetch(`/formularios/${showDeleteFormConfirm.form.id}`, {
+        method: 'DELETE',
+        headers: {
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        }
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setNotification({ type: 'success', message: 'Formulario eliminado correctamente' })
+        setTimeout(() => setNotification(null), 3000)
+        setShowDeleteFormConfirm({show: false, form: null})
+        await loadForms()
+      } else {
+        setNotification({ type: 'error', message: result.message || 'Error al eliminar el formulario' })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    } catch (error) {
+      console.error('Error al eliminar formulario:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al eliminar el formulario' })
+      setTimeout(() => setNotification(null), 10000)
+    }
+  }
+
+  const copyFormLink = (uniqueId: string) => {
+    const link = `${window.location.origin}/form/${uniqueId}`
+    navigator.clipboard.writeText(link).then(() => {
+      setNotification({ type: 'success', message: 'Link copiado al portapapeles' })
+      setTimeout(() => setNotification(null), 3000)
+    }).catch(() => {
+      setNotification({ type: 'error', message: 'Error al copiar el link' })
+      setTimeout(() => setNotification(null), 5000)
+    })
+  }
+
+  const toggleFormActive = async (form: ContactForm) => {
+    try {
+      const response = await fetch(`/formularios/${form.id}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || ''
+        },
+        body: JSON.stringify({ active: !form.active })
+      })
+
+      const result = await response.json()
+      
+      if (result.success) {
+        setNotification({ 
+          type: 'success', 
+          message: form.active ? 'Formulario desactivado' : 'Formulario activado'
+        })
+        setTimeout(() => setNotification(null), 3000)
+        await loadForms()
+      } else {
+        setNotification({ type: 'error', message: result.message || 'Error al actualizar el formulario' })
+        setTimeout(() => setNotification(null), 10000)
+      }
+    } catch (error) {
+      console.error('Error al actualizar formulario:', error)
+      setNotification({ type: 'error', message: 'Error de conexión al actualizar el formulario' })
+      setTimeout(() => setNotification(null), 10000)
+    }
+  }
+
   const filteredSubscribers = currentSubscribers.filter(subscriber =>
     subscriber.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
     subscriber.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -876,6 +1089,19 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                   <div className="flex items-center space-x-2">
                     <List className="h-4 w-4" />
                     <span>Listas</span>
+                  </div>
+                </button>
+                <button
+                  onClick={() => setActiveTab('forms')}
+                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                    activeTab === 'forms'
+                      ? 'border-orange-500 text-orange-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <div className="flex items-center space-x-2">
+                    <Link2 className="h-4 w-4" />
+                    <span>Formularios Públicos</span>
                   </div>
                 </button>
               </nav>
@@ -1424,6 +1650,187 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                       >
                         Crear Primera Lista
                       </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Forms Tab */}
+            {activeTab === 'forms' && (
+              <div className="space-y-6">
+                <div className="bg-white rounded-lg shadow-sm border p-6">
+                  <div className="flex items-center justify-between mb-4">
+                    <h3 className="text-lg font-semibold text-gray-900">Formularios Públicos</h3>
+                    <button
+                      onClick={handleCreateForm}
+                      className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors text-sm flex items-center space-x-2"
+                    >
+                      <Plus className="h-4 w-4" />
+                      <span>Crear Formulario</span>
+                    </button>
+                  </div>
+
+                  <div className="text-sm text-gray-600 mb-4">
+                    <p>• Crea formularios públicos con duración limitada (máximo 7 días)</p>
+                    <p>• Personaliza los campos que quieres capturar (nombre, email, teléfono, descripción)</p>
+                    <p>• Comparte el link único con quien quieras para que llenen el formulario</p>
+                    <p>• Los contactos se agregarán automáticamente a tu base de datos</p>
+                  </div>
+                </div>
+
+                {/* Forms Table */}
+                <div className="bg-white rounded-lg shadow-sm border">
+                  <div className="px-6 py-4 border-b border-gray-200">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-md font-semibold text-gray-900">Formularios Creados</h4>
+                      {isLoadingForms && (
+                        <RefreshCw className="h-4 w-4 text-gray-400 animate-spin" />
+                      )}
+                    </div>
+                  </div>
+
+                  {isLoadingForms ? (
+                    <div className="text-center py-12">
+                      <RefreshCw className="h-8 w-8 text-gray-400 mx-auto mb-4 animate-spin" />
+                      <p className="text-gray-600">Cargando formularios...</p>
+                    </div>
+                  ) : forms.length === 0 ? (
+                    <div className="text-center py-12">
+                      <Link2 className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-lg font-medium text-gray-900 mb-2">No hay formularios</h3>
+                      <p className="text-gray-600 mb-4">Comienza creando tu primer formulario público para capturar contactos.</p>
+                      <button
+                        onClick={handleCreateForm}
+                        className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors"
+                      >
+                        Crear Primer Formulario
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Nombre
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Campos
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Lista
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Expira
+                            </th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Estado
+                            </th>
+                            <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">
+                              Acciones
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                          {forms.map((form) => {
+                            const expiresAt = new Date(form.expiresAt)
+                            const now = new Date()
+                            const isExpired = expiresAt < now
+                            const daysLeft = Math.ceil((expiresAt.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+                            
+                            const fieldsList = []
+                            if (form.fields.nombre) fieldsList.push('Nombre')
+                            if (form.fields.email) fieldsList.push('Email')
+                            if (form.fields.telefono) fieldsList.push('Teléfono')
+                            if (form.fields.descripcion) fieldsList.push('Descripción')
+
+                            return (
+                              <tr key={form.id} className="hover:bg-gray-50">
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm font-medium text-gray-900">{form.name}</div>
+                                  <div className="text-xs text-gray-500 mt-1">
+                                    Creado: {new Date(form.createdAt).toLocaleDateString()}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <div className="text-sm text-gray-900">
+                                    {fieldsList.join(', ')}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="text-sm text-gray-900">
+                                    {form.list ? form.list.name : 'Sin lista'}
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <div className="flex items-center space-x-2">
+                                    <Clock className={`h-4 w-4 ${isExpired ? 'text-red-500' : daysLeft <= 2 ? 'text-orange-500' : 'text-gray-400'}`} />
+                                    <div>
+                                      <div className={`text-sm ${isExpired ? 'text-red-600 font-medium' : daysLeft <= 2 ? 'text-orange-600' : 'text-gray-900'}`}>
+                                        {isExpired ? 'Expirado' : `${daysLeft} día${daysLeft !== 1 ? 's' : ''}`}
+                                      </div>
+                                      <div className="text-xs text-gray-500">
+                                        {expiresAt.toLocaleDateString()}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap">
+                                  <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                                    form.active && !isExpired
+                                      ? 'bg-green-100 text-green-800'
+                                      : 'bg-gray-100 text-gray-800'
+                                  }`}>
+                                    {form.active && !isExpired ? 'Activo' : 'Inactivo'}
+                                  </span>
+                                </td>
+                                <td className="px-6 py-4 whitespace-nowrap text-center text-sm font-medium">
+                                  <div className="flex items-center justify-center space-x-2">
+                                    <button
+                                      onClick={() => copyFormLink(form.uniqueId)}
+                                      className="text-blue-600 hover:text-blue-900"
+                                      title="Copiar link"
+                                    >
+                                      <Copy className="h-4 w-4" />
+                                    </button>
+                                    <a
+                                      href={`/form/${form.uniqueId}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-green-600 hover:text-green-900"
+                                      title="Ver formulario"
+                                    >
+                                      <ExternalLink className="h-4 w-4" />
+                                    </a>
+                                    <button
+                                      onClick={() => toggleFormActive(form)}
+                                      className={`${form.active ? 'text-orange-600 hover:text-orange-900' : 'text-green-600 hover:text-green-900'}`}
+                                      title={form.active ? 'Desactivar' : 'Activar'}
+                                    >
+                                      {form.active ? '⏸' : '▶'}
+                                    </button>
+                                    <button
+                                      onClick={() => handleEditForm(form)}
+                                      className="text-blue-600 hover:text-blue-900"
+                                      title="Editar"
+                                    >
+                                      <Edit className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={() => setShowDeleteFormConfirm({show: true, form})}
+                                      className="text-red-600 hover:text-red-900"
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   )}
                 </div>
@@ -2148,6 +2555,201 @@ export default function Contactos({ user, subscribers = [], lists = [], flash }:
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Crear/Editar Formulario */}
+        {showCreateFormModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+              <div className="px-6 py-4 border-b border-gray-200 sticky top-0 bg-white">
+                <h3 className="text-lg font-semibold text-gray-900">
+                  {editingForm ? 'Editar Formulario' : 'Crear Nuevo Formulario'}
+                </h3>
+              </div>
+              
+              <form onSubmit={handleFormSubmit} className="p-6">
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Nombre del Formulario *
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.name}
+                      onChange={(e) => setFormData('name', e.target.value)}
+                      className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 ${
+                        formErrors.name ? 'border-red-300' : 'border-gray-300'
+                      }`}
+                      placeholder="Ej: Formulario de Contacto"
+                      required
+                    />
+                    {formErrors.name && (
+                      <p className="mt-1 text-sm text-red-600">{formErrors.name}</p>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-3">
+                      Campos del Formulario *
+                    </label>
+                    <div className="space-y-3 border border-gray-200 rounded-lg p-4">
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.fields.nombre}
+                          onChange={(e) => setFormData('fields', { ...formData.fields, nombre: e.target.checked })}
+                          className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">Nombre</span>
+                      </label>
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.fields.email}
+                          disabled
+                          className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">Email <span className="text-gray-500">(requerido)</span></span>
+                      </label>
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.fields.telefono}
+                          onChange={(e) => setFormData('fields', { ...formData.fields, telefono: e.target.checked })}
+                          className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">Teléfono</span>
+                      </label>
+                      <label className="flex items-center space-x-3 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={formData.fields.descripcion}
+                          onChange={(e) => setFormData('fields', { ...formData.fields, descripcion: e.target.checked })}
+                          className="rounded border-gray-300 text-orange-600 focus:ring-orange-500"
+                        />
+                        <span className="text-sm text-gray-700">Descripción</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">
+                      Asignar a Lista (Opcional)
+                    </label>
+                    <select
+                      value={formData.listId || ''}
+                      onChange={(e) => setFormData('listId', e.target.value ? parseInt(e.target.value) : null)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                    >
+                      <option value="">Sin lista</option>
+                      {currentLists.filter(list => list.status === 'active').map((list) => (
+                        <option key={list.id} value={list.id}>
+                          {list.name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-1 text-xs text-gray-500">
+                      Los contactos que completen este formulario se agregarán automáticamente a la lista seleccionada
+                    </p>
+                  </div>
+
+                  {!editingForm && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Duración (días) *
+                      </label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="7"
+                        value={formData.durationDays}
+                        onChange={(e) => setFormData('durationDays', parseInt(e.target.value))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+                        required
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        El formulario expirará después de {formData.durationDays} día{formData.durationDays !== 1 ? 's' : ''} (máximo 7 días)
+                      </p>
+                    </div>
+                  )}
+
+                  {editingForm && (
+                    <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                      <p className="text-sm text-yellow-800">
+                        <strong>Nota:</strong> No se puede cambiar la duración de un formulario existente. 
+                        El formulario expirará el {new Date(editingForm.expiresAt).toLocaleDateString()}.
+                      </p>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="flex justify-end space-x-3 mt-6">
+                  <button
+                    type="button"
+                    onClick={handleCloseFormModal}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={isSavingForm}
+                    className={`px-4 py-2 rounded-lg transition-colors ${
+                      isSavingForm 
+                        ? 'bg-gray-400 cursor-not-allowed' 
+                        : 'bg-orange-500 hover:bg-orange-600'
+                    } text-white`}
+                  >
+                    {isSavingForm ? 'Guardando...' : (editingForm ? 'Actualizar Formulario' : 'Crear Formulario')}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de confirmación de eliminación de formulario */}
+        {showDeleteFormConfirm.show && showDeleteFormConfirm.form && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full mx-4">
+              <div className="px-6 py-4 border-b border-gray-200">
+                <h3 className="text-lg font-semibold text-gray-900">Confirmar Eliminación</h3>
+              </div>
+              
+              <div className="p-6">
+                <div className="flex items-center mb-4">
+                  <div className="h-12 w-12 rounded-full bg-red-100 flex items-center justify-center mr-4">
+                    <Trash2 className="h-6 w-6 text-red-600" />
+                  </div>
+                  <div>
+                    <p className="text-gray-900 font-medium">¿Estás seguro de eliminar este formulario?</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      El formulario: <strong>{showDeleteFormConfirm.form.name}</strong>
+                    </p>
+                  </div>
+                </div>
+                
+                <p className="text-sm text-gray-600 mb-6">
+                  Esta acción no se puede deshacer. El formulario será eliminado permanentemente y el link dejará de funcionar.
+                </p>
+                
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => setShowDeleteFormConfirm({show: false, form: null})}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleDeleteForm}
+                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                  >
+                    Eliminar Formulario
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
